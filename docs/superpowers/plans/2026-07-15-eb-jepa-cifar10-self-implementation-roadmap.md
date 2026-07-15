@@ -398,7 +398,7 @@ Copier la classe officielle et conserver son tirage de paramètres et son interp
 
 #### Entrées
 
-`image`, image PIL CIFAR-10 ; paramètres `size`, `scale` et `ratio`.
+`image`, image PIL CIFAR-10 ; paramètres `size` et `scale`.
 
 #### Sorties
 
@@ -426,7 +426,7 @@ Avec `size=32`, une image 32×32 produit toujours une vue 32×32 même si la zon
 from PIL import Image
 
 class RandomResizedCrop:
-    def __init__(self, size: int, scale: tuple[float, float], ratio: tuple[float, float]) -> None: ...
+    def __init__(self, size: int, scale: tuple[float, float]) -> None: ...
     def __call__(self, image: Image.Image) -> Image.Image: ...
 ```
 
@@ -760,7 +760,7 @@ Construire le pipeline complet CIFAR-10 et retourner un callable.
 
 #### Entrées
 
-`crop_scale`, intervalle de surfaces relatives ; options de jitter, blur, solarisation et flip.
+`crop_scale`, intervalle de surfaces relatives utilisé par le crop.
 
 #### Sorties
 
@@ -769,7 +769,7 @@ Callable transformant une image PIL en Tensor `(3,32,32)` normalisé.
 #### Comportement attendu
 
 - crop redimensionné.
-- flip, jitter, grayscale, blur et solarisation dans l'ordre officiel.
+- jitter, grayscale, solarisation et flip dans l'ordre officiel.
 - ToTensor puis normalisation avec les statistiques officielles.
 
 #### Exemple
@@ -810,7 +810,7 @@ def get_train_transforms(crop_scale: tuple[float, float] = (0.2, 1.0)):
 #### Indices
 
 1. Compose exécute sa liste de gauche à droite.
-2. Le blur travaille encore sur l'image avant normalisation.
+2. Le pipeline officiel de cette référence ne contient pas de blur.
 3. La normalisation doit être la dernière opération.
 
 ---

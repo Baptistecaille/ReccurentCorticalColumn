@@ -9,9 +9,9 @@ from importlib import import_module
 from typing import Any
 
 _PUBLIC_OBJECTS = {
-    "ImageSSL": (".heads", "ImageSSL"),
+    "ImageSSL": (".model", "ImageSSL"),
     "build_head": (".heads", "build_head"),
-    "build_model": (".heads", "build_model"),
+    "build_model": (".model", "build_model"),
     "VICRegLoss": (".losses", "VICRegLoss"),
     "load_config": (".config", "load_config"),
 }

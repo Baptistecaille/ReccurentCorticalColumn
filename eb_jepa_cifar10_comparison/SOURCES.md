@@ -12,17 +12,23 @@
 ## État de la provenance
 
 - Phase 0 : licence officielle copiée à l’identique ;
-- aucun symbole EB-JEPA n’est encore copié dans `src/` ;
-- le tableau ci-dessous constitue la liste de travail pour les phases suivantes.
+- phases 1 à 4 : augmentations, datasets, backbone, projecteur MLP et prédicteur
+  cortical présents dans `src/comparison/` ;
+- les phases suivantes restent des éléments planifiés.
 
-## Symboles EB-JEPA retenus
+## Symboles EB-JEPA copiés
+
+| Symbole local | Fichier local | Source officielle | Adaptations |
+|---|---|---|---|
+| augmentations CIFAR-10 | `src/comparison/augmentation.py` | `examples/image_jepa/dataset.py:10-86` | attribution et paramètre `crop_scale` injectable |
+| `PairedViewDataset` | `src/comparison/data.py` | `examples/image_jepa/dataset.py:99-113` | exactement deux vues, label supprimé |
+| `ResNet18` | `src/comparison/backbone.py` | `examples/image_jepa/main.py:61-75` | annotations et `weights=None` explicite |
+| `MLPProjector` | `src/comparison/heads.py` | `examples/image_jepa/main.py:78-102` | bloc `projector` extrait dans une classe nommée |
+
+## Symboles EB-JEPA planifiés
 
 | Symbole local prévu | Source officielle | Traitement prévu |
 |---|---|---|
-| augmentations CIFAR-10 | `examples/image_jepa/dataset.py:10-96` | copier avec attribution |
-| `PairedViewDataset` | `examples/image_jepa/dataset.py:99-113` | adapter pour supprimer le label |
-| `ResNet18` | `examples/image_jepa/main.py:61-75` | copier sans changement architectural |
-| `MLPProjector` | `examples/image_jepa/main.py:78-102` | extraire le bloc `projector` |
 | `LARS` | `examples/image_jepa/main.py:105-207` | copier avec attribution |
 | `WarmupCosineScheduler` | `examples/image_jepa/main.py:210-247` | copier avec attribution |
 | `HingeStdLoss` | `eb_jepa/losses.py:56-81` | copier avec attribution |
