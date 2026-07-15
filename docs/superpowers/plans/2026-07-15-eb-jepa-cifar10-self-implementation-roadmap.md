@@ -421,16 +421,33 @@ class MLPProjector(nn.Module):
     def forward(self, features: Tensor) -> Tensor: ...
 ```
 
-### Exercice 3.3 — `RepresentationHead`
+### Ce que signifie « même contrat »
 
-**Problème.** Définis le protocole structurel commun aux deux têtes. Il sert à
-documenter le contrat `(batch, 512) → (batch, 2048)` sans imposer d’héritage au
-code cortical existant.
+Tu n’as rien à coder ici. N’ajoute ni `Protocol`, ni classe abstraite, ni classe
+parente commune. `MLPProjector` et `CorticalHead` héritent déjà de `nn.Module` et
+PyTorch sait appeler leur méthode `forward` avec la syntaxe `head(features)`.
+
+Dans la suite du projet, les deux têtes doivent simplement respecter la même
+convention :
+
+```text
+entrée  : features, tenseur de forme (batch_size, 512)
+sortie  : projections, tenseur de forme (batch_size, 2048)
+```
+
+Exemple avec un batch de huit images :
 
 ```python
-class RepresentationHead(Protocol):
-    def __call__(self, features: Tensor) -> Tensor: ...
+features = torch.randn(8, 512)
+projections = head(features)
+
+# La forme attendue est (8, 2048), quelle que soit la tête choisie.
+print(projections.shape)
 ```
+
+Ce contrat sera utilisé concrètement dans l’exercice `ImageSSL`, où `head` sera
+simplement annoté comme un `nn.Module`. Tu n’as donc pas besoin de comprendre ou
+d’utiliser `typing.Protocol` pour terminer le projet.
 
 ### Exemples raisonnés et cas d’acceptation — Phase 3
 
@@ -438,7 +455,6 @@ class RepresentationHead(Protocol):
 |---|---|---|
 | 3.1 | Une entrée `(8,3,32,32)` produit `(8,512)`. | `fc=Identity`, `maxpool=Identity`, conv 3×3 stride 1 padding 2, aucun poids préentraîné. |
 | 3.2 | Une feature `(8,512)` traverse Linear→BN→ReLU→Linear→BN→ReLU→Linear et donne `(8,2048)`. | Trois Linear, deux BN, deux ReLU, aucune activation finale. |
-| 3.3 | `MLPProjector` et `CorticalHead` satisfont le même appel sans dépendre d’une classe de base. | Protocol runtime optionnel, entrée et sortie documentées, aucune méthode supplémentaire exigée. |
 
 ---
 
