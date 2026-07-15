@@ -47,3 +47,12 @@
 Les fichiers de `Predictor/` sont du code local, pas du code EB-JEPA. Leur copie
 dans le nouveau projet doit préserver leurs modules séparés et leurs imports,
 sans copier le dossier `Predictor/tests/`.
+
+| Symbole local copié | Source locale | Adaptations |
+|---|---|---|
+| arbre et `ColumnNode` | `Predictor/utils/tree_structure.py` | retrait de `pdb`, annotation de retour |
+| `FiLMModulation` | `Predictor/modules/modulation.py` | annotations uniquement |
+| `_lateral_attention`, `ColumnStep`, `CorticalColumn` | `Predictor/modules/column.py` | correction de `torch.torch.Tensor`, noms locaux clarifiés |
+| `ChildDecomposition`, `FeedbackProjection` | `Predictor/modules/decomposition.py` | annotations et formatage uniquement |
+| projections et intégration récursive | `Predictor/modules/integration.py` | annotations et formatage uniquement |
+| `FixedTreePredictor` | `Predictor/model/fixed_tree_predictor.py` | imports relatifs, retrait du bloc exécutable |
