@@ -24,6 +24,8 @@
 | `PairedViewDataset` | `src/comparison/data.py` | `examples/image_jepa/dataset.py:99-113` | exactement deux vues, label supprimé |
 | `ResNet18` | `src/comparison/backbone.py` | `examples/image_jepa/main.py:61-75` | annotations et `weights=None` explicite |
 | `MLPProjector` | `src/comparison/heads.py` | `examples/image_jepa/main.py:78-102` | bloc `projector` extrait dans une classe nommée |
+| `load_config` | `src/comparison/config.py` | `eb_jepa/training_utils.py:241-269` | overrides sous forme de dot-list, structure figée et validation locale |
+| `validate_config` | `src/comparison/config.py` | absent de la référence | validation locale du protocole CIFAR-10 commun |
 
 ## Symboles EB-JEPA planifiés
 
@@ -38,7 +40,6 @@
 | `setup_seed` | `eb_jepa/training_utils.py:27-35` | copier avec attribution |
 | `save_checkpoint` | `eb_jepa/training_utils.py:146-176` | copier puis ajouter la configuration |
 | `load_checkpoint` | `eb_jepa/training_utils.py:179-238` | copier puis vérifier le type de tête |
-| `load_config` | `eb_jepa/training_utils.py:241-269` | copier avec attribution |
 | `train_epoch` | `examples/image_jepa/main.py:250-332` | copier puis retirer linear probe et labels |
 
 ## Code explicitement non repris
