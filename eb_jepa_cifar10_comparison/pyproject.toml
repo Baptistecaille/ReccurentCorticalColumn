@@ -14,6 +14,12 @@ dependencies = [
     "fvcore>=0.1.5.post20221221",
 ]
 
+[project.optional-dependencies]
+notebook = [
+    "jupyterlab",
+    "ipykernel",
+]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
