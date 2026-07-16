@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from dataclasses import dataclass
 from pathlib import Path
 from omegaconf import DictConfig
+from tqdm.auto import tqdm
 
 from .augmentation import get_train_transforms
 from .data import make_dataloaders
@@ -34,7 +35,16 @@ class RunResult:
     final_epoch: int
 
 
-def train_epoch(model: ImageSSL, train_loader: DataLoader, optimizer: LARS, scheduler: WarmupCosineScheduler, loss_fn: VICRegLoss, device: torch.device, use_bf16: bool) -> EpochMetrics:
+def train_epoch(
+    model: ImageSSL,
+    train_loader: DataLoader,
+    optimizer: LARS,
+    scheduler: WarmupCosineScheduler,
+    loss_fn: VICRegLoss,
+    device: torch.device,
+    use_bf16: bool,
+    progress_description: str = "Training",
+) -> EpochMetrics:
     
     """ Train the model for one epoch """
 
@@ -45,7 +55,14 @@ def train_epoch(model: ImageSSL, train_loader: DataLoader, optimizer: LARS, sche
     num_batches = 0
     total_exemples = 0
 
-    for batch in train_loader:
+    progress = tqdm(
+        train_loader,
+        desc=progress_description,
+        unit="batch",
+        dynamic_ncols=True,
+    )
+
+    for batch in progress:
 
         view1, view2 = batch
         view1, view2 = view1.to(device), view2.to(device)
@@ -76,6 +93,7 @@ def train_epoch(model: ImageSSL, train_loader: DataLoader, optimizer: LARS, sche
         total_loss += loss.item() * batch_size
         total_exemples += batch_size
         num_batches += 1
+        progress.set_postfix(loss=f"{total_loss / total_exemples:.4f}")
 
     # Check if the loader is empty
     if num_batches == 0:
@@ -254,6 +272,7 @@ def run(cfg: DictConfig, seed: int, output_dir: str | Path, resume_from: str | P
             loss_fn=loss_fn,
             device=device,
             use_bf16=use_bf16,
+            progress_description=f"Epoch {epoch + 1}/{cfg.optimization.epochs}",
         )
 
         validation_metrics = evaluate_validation(
