@@ -11,3 +11,6 @@ wheels/
 
 # Read-only upstream reference clone
 external/eb_jepa/
+
+# Isolated implementation worktrees
+.worktrees/
