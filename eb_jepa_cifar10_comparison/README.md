@@ -36,7 +36,7 @@ exécutable indépendamment des autres après les imports partagés.
 | Benchmark | `BENCHMARK_CONFIG`, `BENCHMARK_OVERRIDES`, `BENCHMARK_CHECKPOINT`, `BENCHMARK_OUTPUT` | Configuration, overrides, même checkpoint local et même artefact partagé |
 | Report | `REPORT_RESULTS`, `REPORT_MARKDOWN_OUTPUT`, `REPORT_JSON_OUTPUT`, `REPORT_SCORE_TOLERANCE` | Exactement six artefacts complets, sorties Markdown/JSON distinctes et tolérance relative (défaut `0.02`, soit 2 %) |
 
-Un override est une chaîne telle que `"training.epochs=10"` dans la liste
+Un override est une chaîne telle que `"optimization.epochs=10"` dans la liste
 `*_OVERRIDES` concernée. `TRAIN_RESUME_FROM=None` démarre un nouveau run ; une
 autre valeur doit pointer vers le checkpoint de reprise. Les checkpoints
 d’Evaluate et Benchmark doivent être des fichiers locaux fiables : leur
