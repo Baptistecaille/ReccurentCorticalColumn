@@ -1,8 +1,7 @@
 """Representation heads used by the CIFAR-10 comparison.
 
 ``MLPProjector`` is extracted from ``examples/image_jepa/main.py:78-102`` in
-facebookresearch/eb_jepa at commit
-966e61e9285b3a876f49b9774e9720d9a99a7925. It is converted from an inline
+facebookresearch/eb_jepa. It is converted from an inline
 ``nn.Sequential`` to a named module without changing its layer order.
 ``CorticalHead`` and ``build_head`` are local comparison adapters.
 """
@@ -38,7 +37,7 @@ class MLPProjector(nn.Module):
 
 
 class CorticalHead(nn.Module):
-    """Validate the common head contract around ``FixedTreePredictor``."""
+    """ Check the input and output dimensions of the cortical head. """
 
     def __init__(
         self,

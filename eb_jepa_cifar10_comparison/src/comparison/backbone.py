@@ -1,7 +1,6 @@
 """ResNet-18 backbone adapted from facebookresearch/eb_jepa.
 
-Source: examples/image_jepa/main.py:61-75 at commit
-966e61e9285b3a876f49b9774e9720d9a99a7925.
+Source: examples/image_jepa/main.py:61-75
 The architecture is unchanged from the CIFAR-10 reference.
 """
 

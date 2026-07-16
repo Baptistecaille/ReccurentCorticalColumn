@@ -1,9 +1,7 @@
 """CIFAR-10 datasets, deterministic splits, and paired-view loaders.
 
 ``PairedViewDataset`` is adapted from ``ImageDataset`` in
-``facebookresearch/eb_jepa/examples/image_jepa/dataset.py:99-113`` at commit
-966e61e9285b3a876f49b9774e9720d9a99a7925. The label is removed and exactly
-two views are returned. Split and deterministic-evaluation utilities are local.
+``facebookresearch/eb_jepa/examples/image_jepa/dataset.py:99-113``
 """
 
 from collections.abc import Callable, Iterator
@@ -17,6 +15,8 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.datasets import CIFAR10
+
+from .checkpoint import seed_worker
 
 
 def _extract_image(sample: object) -> object:
@@ -119,11 +119,19 @@ class DataLoaders:
     validation: DataLoader
     test: DataLoader
 
+    @property
+    def train_generator(self) -> torch.Generator:
+        generator = self.train.generator
+        if generator is None:
+            raise RuntimeError("The train DataLoader has no generator")
+        return generator
+
 
 def make_dataloaders(
     cfg: DictConfig,
     train_transform: Callable,
     eval_transform: Callable,
+    seed: int,
 ) -> DataLoaders:
     """Build paired-view CIFAR-10 loaders without exposing labels."""
     raw_train = CIFAR10(
@@ -173,11 +181,17 @@ def make_dataloaders(
         "batch_size": cfg.data.batch_size,
         "num_workers": cfg.data.num_workers,
         "pin_memory": bool(cfg.data.get("pin_memory", True)),
+        "worker_init_fn": seed_worker,
     }
+
+    train_generator = torch.Generator()
+    train_generator.manual_seed(seed)
+
     train_loader = DataLoader(
         train_dataset,
         shuffle=True,
         drop_last=True,
+        generator=train_generator,
         **loader_options,
     )
     validation_loader = DataLoader(
@@ -192,6 +206,7 @@ def make_dataloaders(
         drop_last=False,
         **loader_options,
     )
+
     return DataLoaders(
         train=train_loader,
         validation=validation_loader,

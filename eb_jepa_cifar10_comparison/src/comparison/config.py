@@ -38,6 +38,14 @@ def validate_config(cfg: DictConfig) -> None:
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"cfg must be a DictConfig, received {type(cfg).__name__}")
 
+    supplied_head_type = OmegaConf.select(cfg, "model.head_type")
+    if supplied_head_type is not None:
+        _require(
+            str(supplied_head_type).lower() in {"baseline", "cortical"},
+            "model.head_type must be 'baseline' or 'cortical', "
+            f"received {supplied_head_type!r}",
+        )
+
     _require_keys(
         cfg,
         (
@@ -198,17 +206,20 @@ def validate_config(cfg: DictConfig) -> None:
         "optimization.optimizer must be 'lars', "
         f"received {cfg.optimization.optimizer!r}",
     )
+    epochs = int(cfg.optimization.epochs)
+    warmup_epochs = int(cfg.optimization.warmup_epochs)
+
     _require(
-        int(cfg.optimization.epochs) > 0,
-        f"optimization.epochs must be positive, received {cfg.optimization.epochs}",
+        epochs > 0,
+        f"optimization.epochs must be positive, received {epochs}",
     )
     _require_close(
         "optimization.learning_rate", cfg.optimization.learning_rate, 0.3
     )
     _require(
-        int(cfg.optimization.warmup_epochs) >= 0,
+        warmup_epochs >= 0,
         "optimization.warmup_epochs must be non-negative, "
-        f"received {cfg.optimization.warmup_epochs}",
+        f"received {warmup_epochs}",
     )
     _require_close(
         "optimization.warmup_start_lr", cfg.optimization.warmup_start_lr, 3e-5
