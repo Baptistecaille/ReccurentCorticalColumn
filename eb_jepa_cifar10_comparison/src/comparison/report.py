@@ -410,6 +410,11 @@ def write_report(
     """Write coherent, auditable JSON and Markdown comparison reports."""
     if not math.isfinite(score_tolerance) or score_tolerance < 0:
         raise ValueError("score_tolerance must be finite and non-negative")
+    markdown_path = Path(markdown_path)
+    json_path = Path(json_path)
+    if markdown_path.resolve() == json_path.resolve():
+        raise ValueError("Markdown and JSON report paths must be distinct")
+
     payload = _report_payload(
         baseline,
         cortical,
@@ -425,8 +430,6 @@ def write_report(
     )
     markdown_text = _render_markdown(payload)
 
-    markdown_path = Path(markdown_path)
-    json_path = Path(json_path)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json_text + "\n", encoding="utf-8")

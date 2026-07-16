@@ -160,8 +160,10 @@ def _validate_evaluation(
     pairs = values["pairs"]
     if not isinstance(pairs, (list, tuple)):
         raise TypeError("evaluation pairs must be a list or tuple")
-    if not pairs:
-        raise ValueError("evaluation pairs must not be empty")
+    if len(pairs) != 5:
+        raise ValueError(
+            f"evaluation must contain exactly five pairs, received {len(pairs)}"
+        )
     validated_pairs = []
     for pair_index, pair in enumerate(pairs):
         pair_values = _require_exact_keys(
@@ -191,6 +193,10 @@ def _validate_evaluation(
                 f"received {collapsed_fraction}"
             )
         validated_pairs.append(validated_pair)
+
+    pair_seeds = [pair["pair_seed"] for pair in validated_pairs]
+    if len(set(pair_seeds)) != 5:
+        raise ValueError("evaluation pair_seed values must be distinct")
 
     mean_total = _validate_float(values["mean_total"], "evaluation mean_total")
     std_total = _validate_float(values["std_total"], "evaluation std_total")
@@ -246,12 +252,18 @@ def _validate_benchmark(benchmark: object) -> dict[str, Any]:
     validated["gpu_name"] = _validate_nonempty_string(
         values["gpu_name"], "benchmark gpu_name"
     )
+    if "a100" not in validated["gpu_name"].lower():
+        raise ValueError("benchmark gpu_name must identify an A100 GPU")
     validated["dtype"] = _validate_nonempty_string(
         values["dtype"], "benchmark dtype"
     )
+    if validated["dtype"] != "bfloat16":
+        raise ValueError("benchmark dtype must be exactly 'bfloat16'")
     validated["batch_size"] = _validate_integer(
         values["batch_size"], "benchmark batch_size", positive=True
     )
+    if validated["batch_size"] != 256:
+        raise ValueError("benchmark batch_size must be exactly 256")
     return validated
 
 

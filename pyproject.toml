@@ -1,0 +1,29 @@
+[project]
+name = "reccurentcorticalcolumn"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.13.0",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.28.0",
+    "pyyaml>=6.0",
+    "fvcore>=0.1.5.post20221221",
+    "tqdm>=4.66",
+    "omegaconf>=2.3.1",
+]
+
+[project.optional-dependencies]
+notebook = [
+    "jupyterlab",
+    "ipykernel",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["eb_jepa_cifar10_comparison/src"]
+include = ["comparison*"]
