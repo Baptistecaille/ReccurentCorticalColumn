@@ -1,6 +1,7 @@
 """File-oriented workflows shared by evaluation, benchmarking, and reports."""
 
-from dataclasses import asdict, fields
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, fields
 import hashlib
 import json
 import math
@@ -15,6 +16,13 @@ from .benchmark import BenchmarkResult, ComputeMetrics, benchmark_model
 from .checkpoint import setup_device
 from .evaluate import PairEvaluation, TestEvaluation, evaluate_test
 from .model import build_model
+from .report import (
+    ComparisonDecision,
+    SeedResult,
+    aggregate_results,
+    decide_comparison,
+    write_report,
+)
 
 
 _SCHEMA_VERSION = 1
@@ -30,6 +38,13 @@ _PAIR_KEYS = {field.name for field in fields(PairEvaluation)}
 _EVALUATION_KEYS = {field.name for field in fields(TestEvaluation)}
 _COMPUTE_KEYS = {field.name for field in fields(ComputeMetrics)}
 _BENCHMARK_KEYS = {field.name for field in fields(BenchmarkResult)}
+
+
+@dataclass(frozen=True)
+class ReportWorkflowResult:
+    markdown_path: Path
+    json_path: Path
+    decision: ComparisonDecision
 
 
 def _require_exact_keys(
@@ -457,3 +472,108 @@ def benchmark_checkpoint_to_json(
         benchmark=asdict(benchmark),
     )
     return Path(output_path)
+
+
+def _reconstruct_pair(payload: dict[str, Any]) -> PairEvaluation:
+    return PairEvaluation(
+        pair_seed=payload["pair_seed"],
+        total=payload["total"],
+        invariance=payload["invariance"],
+        variance=payload["variance"],
+        covariance=payload["covariance"],
+        mean_std=payload["mean_std"],
+        min_std=payload["min_std"],
+        collapsed_fraction=payload["collapsed_fraction"],
+    )
+
+
+def _reconstruct_evaluation(payload: dict[str, Any]) -> TestEvaluation:
+    return TestEvaluation(
+        pairs=tuple(_reconstruct_pair(pair) for pair in payload["pairs"]),
+        mean_total=payload["mean_total"],
+        std_total=payload["std_total"],
+        checkpoint_sha256=payload["checkpoint_sha256"],
+    )
+
+
+def _reconstruct_compute(payload: dict[str, Any]) -> ComputeMetrics:
+    return ComputeMetrics(
+        parameters=payload["parameters"],
+        flops_per_sample=payload["flops_per_sample"],
+        latency_ms=payload["latency_ms"],
+        throughput_samples_s=payload["throughput_samples_s"],
+        peak_memory_bytes=payload["peak_memory_bytes"],
+    )
+
+
+def _reconstruct_benchmark(payload: dict[str, Any]) -> BenchmarkResult:
+    return BenchmarkResult(
+        head=_reconstruct_compute(payload["head"]),
+        full_model=_reconstruct_compute(payload["full_model"]),
+        gpu_name=payload["gpu_name"],
+        dtype=payload["dtype"],
+        batch_size=payload["batch_size"],
+    )
+
+
+def _reconstruct_seed_result(payload: dict[str, Any]) -> SeedResult:
+    evaluation = payload["evaluation"]
+    benchmark = payload["benchmark"]
+    if evaluation is None or benchmark is None:
+        raise ValueError(
+            "Every report artifact must contain evaluation and benchmark data"
+        )
+    return SeedResult(
+        head_type=payload["head_type"],
+        training_seed=payload["training_seed"],
+        evaluation=_reconstruct_evaluation(evaluation),
+        benchmark=_reconstruct_benchmark(benchmark),
+    )
+
+
+def report_from_json(
+    result_paths: Sequence[str | Path],
+    markdown_path: str | Path,
+    json_path: str | Path,
+    score_tolerance: float = 0.02,
+) -> ReportWorkflowResult:
+    """Build the comparison reports from exactly six complete artifacts."""
+    paths = tuple(Path(path) for path in result_paths)
+    if len(paths) != 6:
+        raise ValueError(
+            f"Exactly six result artifacts are required, received {len(paths)}"
+        )
+    resolved_paths = tuple(path.resolve() for path in paths)
+    if len(set(resolved_paths)) != len(resolved_paths):
+        raise ValueError("Result artifact paths must not contain duplicates")
+
+    runs = tuple(
+        _reconstruct_seed_result(_read_result_artifact(path)) for path in paths
+    )
+    grouped = {
+        head_type: tuple(
+            sorted(
+                (run for run in runs if run.head_type == head_type),
+                key=lambda run: run.training_seed,
+            )
+        )
+        for head_type in ("baseline", "cortical")
+    }
+    baseline = aggregate_results(grouped["baseline"])
+    cortical = aggregate_results(grouped["cortical"])
+    decision = decide_comparison(baseline, cortical, score_tolerance)
+
+    markdown_output = Path(markdown_path)
+    json_output = Path(json_path)
+    write_report(
+        markdown_output,
+        json_output,
+        baseline,
+        cortical,
+        decision,
+    )
+    return ReportWorkflowResult(
+        markdown_path=markdown_output,
+        json_path=json_output,
+        decision=decision,
+    )
