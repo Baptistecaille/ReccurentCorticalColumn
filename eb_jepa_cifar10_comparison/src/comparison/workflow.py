@@ -571,6 +571,7 @@ def report_from_json(
         baseline,
         cortical,
         decision,
+        score_tolerance,
     )
     return ReportWorkflowResult(
         markdown_path=markdown_output,
