@@ -3,6 +3,7 @@
 from dataclasses import fields
 import hashlib
 import json
+import math
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -60,6 +61,57 @@ def _validate_sha256(value: object, description: str) -> str:
     return value.lower()
 
 
+def _validate_seed(value: object, description: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{description} must be an integer and not a boolean")
+    if not 0 <= value < 2**32:
+        raise ValueError(
+            f"{description} must be between 0 and {2**32 - 1}, "
+            f"received {value}"
+        )
+    return value
+
+
+def _validate_integer(
+    value: object,
+    description: str,
+    *,
+    positive: bool,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{description} must be an integer and not a boolean")
+    lower_bound = 1 if positive else 0
+    if value < lower_bound:
+        qualifier = "positive" if positive else "non-negative"
+        raise ValueError(f"{description} must be {qualifier}, received {value}")
+    return value
+
+
+def _validate_float(
+    value: object,
+    description: str,
+    *,
+    positive: bool = False,
+) -> float:
+    if not isinstance(value, float):
+        raise TypeError(f"{description} must be a float")
+    if not math.isfinite(value):
+        raise ValueError(f"{description} must be finite, received {value}")
+    lower_bound = 0.0
+    if value < lower_bound or (positive and value == lower_bound):
+        qualifier = "positive" if positive else "non-negative"
+        raise ValueError(f"{description} must be {qualifier}, received {value}")
+    return value
+
+
+def _validate_nonempty_string(value: object, description: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{description} must be a string")
+    if not value.strip():
+        raise ValueError(f"{description} must not be empty")
+    return value
+
+
 def _validate_metadata(metadata: object) -> dict[str, object]:
     values = _require_exact_keys(metadata, _METADATA_KEYS, "artifact metadata")
 
@@ -70,9 +122,7 @@ def _validate_metadata(metadata: object) -> dict[str, object]:
             f"received {head_type!r}"
         )
 
-    training_seed = values["training_seed"]
-    if isinstance(training_seed, bool) or not isinstance(training_seed, int):
-        raise TypeError("training_seed must be an integer and not a boolean")
+    training_seed = _validate_seed(values["training_seed"], "training_seed")
 
     return {
         "head_type": head_type.lower(),
@@ -93,8 +143,40 @@ def _validate_evaluation(
     pairs = values["pairs"]
     if not isinstance(pairs, (list, tuple)):
         raise TypeError("evaluation pairs must be a list or tuple")
-    for pair in pairs:
-        _require_exact_keys(pair, _PAIR_KEYS, "pair evaluation")
+    if not pairs:
+        raise ValueError("evaluation pairs must not be empty")
+    validated_pairs = []
+    for pair_index, pair in enumerate(pairs):
+        pair_values = _require_exact_keys(
+            pair, _PAIR_KEYS, f"pair evaluation {pair_index}"
+        )
+        validated_pair = dict(pair_values)
+        validated_pair["pair_seed"] = _validate_seed(
+            pair_values["pair_seed"], f"pair evaluation {pair_index} pair_seed"
+        )
+        for metric in (
+            "total",
+            "invariance",
+            "variance",
+            "covariance",
+            "mean_std",
+            "min_std",
+            "collapsed_fraction",
+        ):
+            validated_pair[metric] = _validate_float(
+                pair_values[metric],
+                f"pair evaluation {pair_index} {metric}",
+            )
+        collapsed_fraction = validated_pair["collapsed_fraction"]
+        if collapsed_fraction > 1.0:
+            raise ValueError(
+                "pair evaluation collapsed_fraction must be between 0 and 1, "
+                f"received {collapsed_fraction}"
+            )
+        validated_pairs.append(validated_pair)
+
+    mean_total = _validate_float(values["mean_total"], "evaluation mean_total")
+    std_total = _validate_float(values["std_total"], "evaluation std_total")
 
     evaluation_digest = _validate_sha256(
         values["checkpoint_sha256"],
@@ -104,18 +186,56 @@ def _validate_evaluation(
         raise ValueError(
             "Evaluation checkpoint hash does not match artifact metadata"
         )
-    return values
+    validated = dict(values)
+    validated["pairs"] = validated_pairs
+    validated["mean_total"] = mean_total
+    validated["std_total"] = std_total
+    validated["checkpoint_sha256"] = evaluation_digest
+    return validated
 
 
 def _validate_benchmark(benchmark: object) -> dict[str, Any]:
     values = _require_exact_keys(
         benchmark, _BENCHMARK_KEYS, "benchmark payload"
     )
-    _require_exact_keys(values["head"], _COMPUTE_KEYS, "head compute metrics")
-    _require_exact_keys(
-        values["full_model"], _COMPUTE_KEYS, "full-model compute metrics"
+    validated = dict(values)
+    for section in ("head", "full_model"):
+        metrics = _require_exact_keys(
+            values[section], _COMPUTE_KEYS, f"{section} compute metrics"
+        )
+        validated_metrics = dict(metrics)
+        validated_metrics["parameters"] = _validate_integer(
+            metrics["parameters"],
+            f"{section} parameters",
+            positive=True,
+        )
+        for metric in (
+            "flops_per_sample",
+            "latency_ms",
+            "throughput_samples_s",
+        ):
+            validated_metrics[metric] = _validate_float(
+                metrics[metric],
+                f"{section} {metric}",
+                positive=True,
+            )
+        validated_metrics["peak_memory_bytes"] = _validate_integer(
+            metrics["peak_memory_bytes"],
+            f"{section} peak_memory_bytes",
+            positive=False,
+        )
+        validated[section] = validated_metrics
+
+    validated["gpu_name"] = _validate_nonempty_string(
+        values["gpu_name"], "benchmark gpu_name"
     )
-    return values
+    validated["dtype"] = _validate_nonempty_string(
+        values["dtype"], "benchmark dtype"
+    )
+    validated["batch_size"] = _validate_integer(
+        values["batch_size"], "benchmark batch_size", positive=True
+    )
+    return validated
 
 
 def _validate_envelope(payload: object) -> dict[str, Any]:
@@ -141,13 +261,16 @@ def _validate_envelope(payload: object) -> dict[str, Any]:
             "Artifact checkpoint_sha256 must use its normalized value"
         )
 
+    validated = dict(values)
     evaluation = values["evaluation"]
     benchmark = values["benchmark"]
     if evaluation is not None:
-        _validate_evaluation(evaluation, metadata["checkpoint_sha256"])
+        validated["evaluation"] = _validate_evaluation(
+            evaluation, metadata["checkpoint_sha256"]
+        )
     if benchmark is not None:
-        _validate_benchmark(benchmark)
-    return values
+        validated["benchmark"] = _validate_benchmark(benchmark)
+    return validated
 
 
 def _reject_json_constant(value: str) -> None:
@@ -176,9 +299,9 @@ def _write_result_artifact(
     normalized_metadata = _validate_metadata(metadata)
     checkpoint_sha256 = str(normalized_metadata["checkpoint_sha256"])
     if evaluation is not None:
-        _validate_evaluation(evaluation, checkpoint_sha256)
+        evaluation = _validate_evaluation(evaluation, checkpoint_sha256)
     if benchmark is not None:
-        _validate_benchmark(benchmark)
+        benchmark = _validate_benchmark(benchmark)
 
     output_path = Path(path)
     existing_evaluation = None
@@ -272,9 +395,7 @@ def _checkpoint_metadata(
             f"configuration uses {configured_head_type!r}"
         )
 
-    seed = checkpoint["seed"]
-    if isinstance(seed, bool) or not isinstance(seed, int):
-        raise TypeError("Checkpoint seed must be an integer and not a boolean")
+    seed = _validate_seed(checkpoint["seed"], "Checkpoint seed")
     model_state_dict = checkpoint["model_state_dict"]
     if not isinstance(model_state_dict, dict):
         raise TypeError("Checkpoint model_state_dict must be a dictionary")
