@@ -1,6 +1,6 @@
 """File-oriented workflows shared by evaluation, benchmarking, and reports."""
 
-from dataclasses import fields
+from dataclasses import asdict, fields
 import hashlib
 import json
 import math
@@ -11,8 +11,10 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 import torch
 
-from .benchmark import BenchmarkResult, ComputeMetrics
-from .evaluate import PairEvaluation, TestEvaluation
+from .benchmark import BenchmarkResult, ComputeMetrics, benchmark_model
+from .checkpoint import setup_device
+from .evaluate import PairEvaluation, TestEvaluation, evaluate_test
+from .model import build_model
 
 
 _SCHEMA_VERSION = 1
@@ -413,3 +415,45 @@ def _checkpoint_metadata(
         }
     )
     return metadata, model_state_dict
+
+
+def evaluate_checkpoint_to_json(
+    cfg: DictConfig,
+    checkpoint_path: str | Path,
+    pair_seeds: tuple[int, int, int, int, int],
+    output_path: str | Path,
+) -> Path:
+    """Evaluate a checkpoint and update its shared result artifact."""
+    metadata, _ = _checkpoint_metadata(cfg, checkpoint_path)
+    evaluation = evaluate_test(cfg, checkpoint_path, pair_seeds)
+    if evaluation.checkpoint_sha256 != metadata["checkpoint_sha256"]:
+        raise ValueError(
+            "Evaluation checkpoint hash does not match artifact metadata"
+        )
+
+    _write_result_artifact(
+        output_path,
+        metadata,
+        evaluation=asdict(evaluation),
+    )
+    return Path(output_path)
+
+
+def benchmark_checkpoint_to_json(
+    cfg: DictConfig,
+    checkpoint_path: str | Path,
+    output_path: str | Path,
+) -> Path:
+    """Benchmark a checkpoint and update its shared result artifact."""
+    metadata, model_state_dict = _checkpoint_metadata(cfg, checkpoint_path)
+    device = setup_device()
+    model = build_model(cfg)
+    model.load_state_dict(model_state_dict, strict=True)
+    benchmark = benchmark_model(model, cfg, device)
+
+    _write_result_artifact(
+        output_path,
+        metadata,
+        benchmark=asdict(benchmark),
+    )
+    return Path(output_path)
