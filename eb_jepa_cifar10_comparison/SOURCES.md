@@ -20,7 +20,7 @@
 
 | Symbole local | Fichier local | Source officielle | Adaptations |
 |---|---|---|---|
-| augmentations CIFAR-10 | `src/comparison/augmentation.py` | `examples/image_jepa/dataset.py:10-86` | attribution et paramètre `crop_scale` injectable |
+| augmentations CIFAR-10 | `src/comparison/augmentation.py` | `examples/image_jepa/dataset.py:10-86` | `crop_scale` et `ratio` injectables, alias `p`, blur et ordre imposés par la roadmap |
 | `PairedViewDataset` | `src/comparison/data.py` | `examples/image_jepa/dataset.py:99-113` | exactement deux vues, label supprimé |
 | `ResNet18` | `src/comparison/backbone.py` | `examples/image_jepa/main.py:61-75` | annotations et `weights=None` explicite |
 | `MLPProjector` | `src/comparison/heads.py` | `examples/image_jepa/main.py:78-102` | bloc `projector` extrait dans une classe nommée |
