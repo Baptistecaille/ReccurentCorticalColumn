@@ -145,12 +145,149 @@ print(f"Output root: {OUTPUT_ROOT}")
 """
 
 
+CONFIG_MARKDOWN = """
+## Fair configurations
+
+Both arms load their published config and apply **one shared override list** so
+the only difference is the projection head. The ResNet-18 backbone, two epochs,
+zero warm-up, batch size, and VICReg loss are identical.
+"""
+
+
+BUILD_CONFIGURATIONS = """
+# One shared override list guarantees a fair comparison: identical backbone,
+# schedule, data, and loss for both arms. ``load_config`` validates every value.
+SHARED_OVERRIDES = [
+    f"data.root={DATA_ROOT}",
+    f"data.batch_size={BATCH_SIZE}",
+    f"data.num_workers={NUM_WORKERS}",
+    "model.backbone=resnet18",
+    f"optimization.epochs={EPOCHS}",
+    "optimization.warmup_epochs=0",
+    "optimization.learning_rate=0.3",
+    "optimization.warmup_start_lr=0.00003",
+]
+CONFIG_PATHS = {
+    "baseline": PROJECT_ROOT / "configs" / "baseline.yaml",
+    "predictor": PROJECT_ROOT / "configs" / "cortical.yaml",
+}
+configs = {
+    label: load_config(path, SHARED_OVERRIDES)
+    for label, path in CONFIG_PATHS.items()
+}
+for label, cfg in configs.items():
+    print(f"{label}: head={cfg.model.head_type} backbone={cfg.model.backbone}")
+"""
+
+
+PROTOCOL_CHECKS = """
+# Guardrails: confirm both resolved configs share the ResNet-18 backbone and the
+# fixed two-epoch, zero-warm-up protocol, and differ only by the head type.
+EXPECTED_HEADS = {"baseline": "baseline", "predictor": "cortical"}
+
+for label, cfg in configs.items():
+    assert str(cfg.model.backbone).lower() == "resnet18", label
+    assert int(cfg.optimization.epochs) == EPOCHS, label
+    assert int(cfg.optimization.warmup_epochs) == 0, label
+    assert int(cfg.data.batch_size) == BATCH_SIZE, label
+    assert str(cfg.model.head_type).lower() == EXPECTED_HEADS[label], label
+
+# The two arms must agree on every shared data/loss/optimization value.
+baseline_cfg, predictor_cfg = configs["baseline"], configs["predictor"]
+for path in (
+    "data.batch_size",
+    "data.crop_scale",
+    "loss.cov_coeff",
+    "loss.invariance_coeff",
+    "loss.std_coeff",
+    "optimization.epochs",
+    "optimization.warmup_epochs",
+    "optimization.learning_rate",
+    "optimization.warmup_start_lr",
+    "optimization.weight_decay",
+):
+    left = OmegaConf.select(baseline_cfg, path)
+    right = OmegaConf.select(predictor_cfg, path)
+    assert left == right, f"Mismatch on {path}: {left} != {right}"
+
+protocol_table = pd.DataFrame(
+    [
+        {
+            "arm": label,
+            "head_type": str(cfg.model.head_type),
+            "backbone": str(cfg.model.backbone),
+            "epochs": int(cfg.optimization.epochs),
+            "warmup_epochs": int(cfg.optimization.warmup_epochs),
+            "batch_size": int(cfg.data.batch_size),
+            "learning_rate": float(cfg.optimization.learning_rate),
+        }
+        for label, cfg in configs.items()
+    ]
+)
+protocol_table
+"""
+
+
+TRAIN_MODELS = """
+# Sequential training: each arm trains from the same seed into its own output
+# directory. Active-device wall-clock time is recorded as a portable benchmark.
+training_results = {}
+training_seconds = {}
+
+for label in ARM_LABELS:
+    output_dir = OUTPUT_ROOT / label / str(TRAINING_SEED)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Training {label} for {EPOCHS} epochs on {DEVICE} ...")
+    start = perf_counter()
+    result = run(configs[label], seed=TRAINING_SEED, output_dir=output_dir)
+    training_seconds[label] = perf_counter() - start
+    training_results[label] = result
+
+    assert result.final_epoch == EPOCHS - 1, (label, result.final_epoch)
+    assert result.best_checkpoint.is_file(), result.best_checkpoint
+    print(
+        f"  {label}: {training_seconds[label]:.1f}s | "
+        f"best val {result.best_validation:.4f} @ epoch {result.best_epoch}"
+    )
+"""
+
+
+EVALUATE_CHECKPOINTS = """
+# Strict evaluation of each best checkpoint on the same five deterministic view
+# pairs, so the two arms are scored on identical inputs.
+evaluations = {}
+
+for label in ARM_LABELS:
+    checkpoint = training_results[label].best_checkpoint
+    evaluation = evaluate_test(
+        configs[label],
+        checkpoint,
+        pair_seeds=PAIR_SEEDS,
+    )
+    seen = {pair.pair_seed for pair in evaluation.pairs}
+    assert seen == set(PAIR_SEEDS), (label, seen)
+    assert len(evaluation.pairs) == 5, label
+    for pair in evaluation.pairs:
+        assert math.isfinite(pair.total), (label, pair.pair_seed)
+    evaluations[label] = evaluation
+    print(
+        f"{label}: mean total {evaluation.mean_total:.4f} "
+        f"(std {evaluation.std_total:.4f})"
+    )
+"""
+
+
 def build_notebook() -> nbformat.NotebookNode:
     cells = [
         markdown("goal", GOAL_MARKDOWN),
         code("portable-setup", PORTABLE_SETUP),
         code("shared-imports", SHARED_IMPORTS),
         code("experiment-parameters", EXPERIMENT_PARAMETERS),
+        markdown("configurations-heading", CONFIG_MARKDOWN),
+        code("build-configurations", BUILD_CONFIGURATIONS),
+        code("protocol-checks", PROTOCOL_CHECKS),
+        code("train-models", TRAIN_MODELS),
+        code("evaluate-checkpoints", EVALUATE_CHECKPOINTS),
     ]
     return new_notebook(
         cells=cells,
