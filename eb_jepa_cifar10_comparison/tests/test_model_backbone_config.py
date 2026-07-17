@@ -6,7 +6,7 @@ import torch
 from omegaconf import OmegaConf
 
 import comparison.backbone as backbone_module
-from comparison.checkpoint import load_checkpoint
+from comparison.checkpoint import capture_rng_state, load_checkpoint
 from comparison.config import load_config
 from comparison.model import build_model
 
@@ -93,3 +93,51 @@ def test_resnet_checkpoint_is_rejected_by_mlp_configuration(tmp_path):
             seed=1,
             train_generator=torch.Generator(),
         )
+
+
+def test_resnet_checkpoint_accepts_case_insensitive_backbone_match(tmp_path):
+    saved_cfg = load_config(BASELINE_CONFIG, ["model.backbone=resnet18"])
+    current_cfg = load_config(BASELINE_CONFIG, ["model.backbone=RESNET18"])
+    checkpoint_path = tmp_path / "resnet.pt"
+    scheduler_state = {
+        "warmup_steps": 0,
+        "total_steps": 1,
+        "start_lr": 0.0,
+        "base_lr": 0.1,
+        "final_lr": 0.0,
+    }
+    torch.save(
+        {
+            "format_version": 2,
+            "epoch": 0,
+            "model_state_dict": {},
+            "optimizer_state_dict": {"param_groups": []},
+            "scheduler_state_dict": scheduler_state,
+            "best_validation": 1.0,
+            "config": OmegaConf.to_container(saved_cfg, resolve=True),
+            "head_type": "baseline",
+            "seed": 1,
+            "rng_state": capture_rng_state(),
+            "train_generator_state": torch.Generator().get_state(),
+        },
+        checkpoint_path,
+    )
+    model = MagicMock()
+    model.state_dict.return_value = {}
+    optimizer = MagicMock()
+    optimizer.state_dict.return_value = {"param_groups": []}
+    scheduler = MagicMock()
+    scheduler.state_dict.return_value = scheduler_state
+
+    resume_state = load_checkpoint(
+        checkpoint_path,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        cfg=current_cfg,
+        device=torch.device("cpu"),
+        seed=1,
+        train_generator=torch.Generator(),
+    )
+
+    assert resume_state.start_epoch == 1

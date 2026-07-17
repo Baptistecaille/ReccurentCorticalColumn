@@ -361,7 +361,12 @@ def load_checkpoint(
             config_path,
         )
 
-        if saved_value != current_value:
+        if config_path == "model.backbone":
+            values_match = str(saved_value).lower() == str(current_value).lower()
+        else:
+            values_match = saved_value == current_value
+
+        if not values_match:
             raise ValueError(
                 f"Checkpoint configuration mismatch for "
                 f"{config_path}: checkpoint has "
