@@ -1,7 +1,6 @@
-"""ResNet-18 backbone adapted from facebookresearch/eb_jepa.
+"""Locally available CIFAR-10 encoder backbones.
 
-Source: examples/image_jepa/main.py:61-75
-The architecture is unchanged from the CIFAR-10 reference.
+Includes a ResNet-18 adapted from facebookresearch/eb_jepa and a lightweight MLP.
 """
 
 import torchvision
@@ -25,3 +24,21 @@ class ResNet18(nn.Module):
 
     def forward(self, images: Tensor) -> Tensor:
         return self.backbone(images)
+
+
+class MLPEncoder(nn.Module):
+    """Lightweight encoder for normalized 32x32 RGB images."""
+
+    features_dim: int = 512
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(3 * 32 * 32, self.features_dim),
+            nn.LayerNorm(self.features_dim),
+            nn.GELU(),
+        )
+
+    def forward(self, images: Tensor) -> Tensor:
+        return self.layers(images)
