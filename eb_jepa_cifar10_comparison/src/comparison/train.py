@@ -11,7 +11,13 @@ from .data import make_dataloaders
 from .losses import VICRegLoss, collapse_diagnostics, CollapseDiagnostics
 from .model import ImageSSL, build_model
 from .optim import LARS, WarmupCosineScheduler
-from .checkpoint import save_checkpoint, load_checkpoint, setup_device, setup_seed
+from .checkpoint import (
+    load_checkpoint,
+    save_checkpoint,
+    setup_device,
+    setup_seed,
+    should_use_bfloat16,
+)
 
 
 
@@ -187,6 +193,7 @@ def run(cfg: DictConfig, seed: int, output_dir: str | Path, resume_from: str | P
         train_transform=train_transforms,
         eval_transform=validation_transforms,
         seed=seed,
+        device=device,
     )
     train_loader = loaders.train
     validation_loader = loaders.validation
@@ -229,7 +236,7 @@ def run(cfg: DictConfig, seed: int, output_dir: str | Path, resume_from: str | P
         base_lr=cfg.optimization.learning_rate,
         final_lr=cfg.optimization.min_lr,
     )
-    use_bf16 = str(cfg.optimization.precision).lower() == "bfloat16"
+    use_bf16 = should_use_bfloat16(cfg.optimization.precision, device)
 
     # ------------------------------------------------------------------
     # 7. Initialiser l’état du run

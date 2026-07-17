@@ -1,7 +1,10 @@
 import pytest
 import torch
+from omegaconf import OmegaConf
+from torch.utils.data import Dataset
 
 from comparison.checkpoint import setup_device
+import comparison.data as data_module
 
 
 @pytest.mark.parametrize(
@@ -67,3 +70,49 @@ def test_pin_memory_is_disabled_only_on_mps(device_name, expected):
 
 def test_disabled_pin_memory_stays_disabled():
     assert not should_pin_memory(False, torch.device("cuda"))
+
+
+class _SizedDataset(Dataset):
+    def __init__(self, size):
+        self.size = size
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, index):
+        return torch.zeros(3, 4, 4), 0
+
+
+def test_make_dataloaders_disables_pin_memory_on_mps(monkeypatch):
+    def fake_cifar10(*, train, **kwargs):
+        del kwargs
+        return _SizedDataset(6 if train else 3)
+
+    monkeypatch.setattr(data_module, "CIFAR10", fake_cifar10)
+    cfg = OmegaConf.create(
+        {
+            "data": {
+                "root": "unused",
+                "download": False,
+                "train_size": 4,
+                "validation_size": 2,
+                "test_size": 3,
+                "batch_size": 2,
+                "num_workers": 0,
+                "pin_memory": True,
+                "split_seed": 42,
+            }
+        }
+    )
+
+    loaders = data_module.make_dataloaders(
+        cfg=cfg,
+        train_transform=lambda image: image,
+        eval_transform=lambda image: image,
+        seed=1,
+        device=torch.device("mps"),
+    )
+
+    assert not loaders.train.pin_memory
+    assert not loaders.validation.pin_memory
+    assert not loaders.test.pin_memory

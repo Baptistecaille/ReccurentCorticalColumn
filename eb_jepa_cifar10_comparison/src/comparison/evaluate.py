@@ -10,7 +10,11 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 
 from .augmentation import get_train_transforms
-from .checkpoint import setup_device
+from .checkpoint import (
+    setup_device,
+    should_pin_memory,
+    should_use_bfloat16,
+)
 from .data import DeterministicPairDataset
 from .losses import VICRegLoss, collapse_diagnostics
 from .model import ImageSSL, build_model
@@ -168,7 +172,7 @@ def evaluate_test(
         variance_epsilon=cfg.loss.variance_epsilon,
     )
 
-    use_bf16 = str(cfg.optimization.precision).lower() == "bfloat16"
+    use_bf16 = should_use_bfloat16(cfg.optimization.precision, device)
 
     eval_transform = get_train_transforms(
         crop_scale=tuple(cfg.data.crop_scale)
@@ -193,7 +197,10 @@ def evaluate_test(
             test_dataset,
             batch_size=cfg.data.batch_size,
             num_workers=cfg.data.num_workers,
-            pin_memory=bool(cfg.data.get("pin_memory", True)),
+            pin_memory=should_pin_memory(
+                cfg.data.get("pin_memory", True),
+                device,
+            ),
             shuffle=False,
             drop_last=False,
         )

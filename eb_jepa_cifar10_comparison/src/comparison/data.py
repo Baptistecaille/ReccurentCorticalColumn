@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.datasets import CIFAR10
 
-from .checkpoint import seed_worker
+from .checkpoint import seed_worker, should_pin_memory
 
 
 def _extract_image(sample: object) -> object:
@@ -132,6 +132,7 @@ def make_dataloaders(
     train_transform: Callable,
     eval_transform: Callable,
     seed: int,
+    device: torch.device,
 ) -> DataLoaders:
     """Build paired-view CIFAR-10 loaders without exposing labels."""
     raw_train = CIFAR10(
@@ -180,7 +181,10 @@ def make_dataloaders(
     loader_options = {
         "batch_size": cfg.data.batch_size,
         "num_workers": cfg.data.num_workers,
-        "pin_memory": bool(cfg.data.get("pin_memory", True)),
+        "pin_memory": should_pin_memory(
+            cfg.data.get("pin_memory", True),
+            device,
+        ),
         "worker_init_fn": seed_worker,
     }
 
