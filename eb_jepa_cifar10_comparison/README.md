@@ -27,6 +27,17 @@ Pour utiliser ensuite une section, modifiez uniquement sa cellule de
 paramètres, puis exécutez sa cellule d’exécution. Chaque section est ainsi
 exécutable indépendamment des autres après les imports partagés.
 
+### Accélération matérielle
+
+Train et Evaluate sélectionnent automatiquement le premier périphérique
+disponible dans l'ordre CUDA → MPS → CPU. Sur un Mac Apple Silicon avec un
+PyTorch compatible, MPS est donc utilisé lorsqu'aucun GPU CUDA n'est présent.
+
+Sur MPS, le workflow désactive automatiquement l'autocast `bfloat16` et
+`pin_memory`; l'entraînement et l'évaluation utilisent sinon les mêmes
+configurations et checkpoints. Benchmark reste volontairement limité à une
+NVIDIA A100 avec CUDA, `bfloat16` et un batch de 256 conformément au protocole.
+
 ### Paramètres éditables
 
 | Section | Paramètres | Rôle |
