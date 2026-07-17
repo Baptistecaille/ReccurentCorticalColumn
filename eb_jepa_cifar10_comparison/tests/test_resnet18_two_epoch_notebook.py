@@ -80,3 +80,11 @@ def test_notebook_contains_tables_plots_takeaways_and_final_checks() -> None:
     assert "plt.subplots" in code["plot-results"]
     assert "percentage" in code["derive-takeaways"]
     assert "math.isfinite" in code["final-checks"]
+
+
+def test_readme_documents_local_and_colab_execution() -> None:
+    readme = (PROJECT_DIR / "README.md").read_text(encoding="utf-8")
+    assert "resnet18_two_epoch_comparison.ipynb" in readme
+    assert "uv run jupyter lab" in readme
+    assert "Google Colab" in readme
+    assert "two epochs" in readme.lower()

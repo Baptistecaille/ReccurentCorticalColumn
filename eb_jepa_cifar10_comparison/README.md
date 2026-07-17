@@ -80,3 +80,39 @@ Le benchmark applique strictement le protocole **NVIDIA A100, bfloat16 et
 batch de 256**. Il n’existe aucun fallback CPU, autre GPU ou taille de batch en
 cas d’indisponibilité ou d’erreur de mémoire : exécutez la section Benchmark sur
 une A100 conforme au protocole.
+
+## Comparaison ResNet-18 sur deux epochs
+
+Le notebook `scripts/resnet18_two_epoch_comparison.ipynb` entraîne et compare de
+bout en bout le projecteur MLP (`baseline`) et `FixedTreePredictor` (`cortical`)
+avec un **backbone ResNet-18 identique** sur exactement **deux epochs** CIFAR-10.
+Les deux bras partagent graine, batch, perte VICReg et overrides ; seule la tête
+diffère. La chronométrie se fait sur le périphérique actif (CUDA → MPS → CPU)
+comme benchmark portable, et non selon le protocole A100 strict.
+
+> **Limite d’interprétation :** two epochs est une comparaison rapide et
+> portable ; elle n’implique aucune convergence de l’un ou l’autre bras.
+
+Le notebook source est généré depuis `scripts/build_resnet18_two_epoch_comparison.py`
+via `nbformat`, afin de rester reproductible et relisible en diff.
+
+### Exécution locale
+
+Depuis `eb_jepa_cifar10_comparison` :
+
+```bash
+uv sync --extra notebook
+uv run jupyter lab scripts/resnet18_two_epoch_comparison.ipynb
+```
+
+Sélectionnez le kernel Python de l’environnement `uv`, puis exécutez les cellules
+dans l’ordre. Les tables CSV et l’artefact JSON (schéma version 1) sont écrits
+sous `runs/resnet18_two_epoch/reports/`.
+
+### Exécution sur Google Colab
+
+Sur Google Colab, clonez ou téléversez le dépôt sous `/content`, ouvrez le même
+notebook `scripts/resnet18_two_epoch_comparison.ipynb`, installez les dépendances
+du projet dans le runtime, puis ne redémarrez le runtime que si Colab le demande
+explicitement. La cellule de configuration détecte automatiquement Colab et le
+périphérique disponible, sans chemin `/Users/...` codé en dur.
