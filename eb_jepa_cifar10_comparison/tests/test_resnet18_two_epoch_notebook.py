@@ -57,3 +57,26 @@ def test_notebook_trains_and_evaluates_both_arms() -> None:
     assert "perf_counter" in training
     assert "evaluate_test(" in evaluation
     assert "pair_seeds=PAIR_SEEDS" in evaluation
+
+
+def test_notebook_profiles_active_device_and_exports_results() -> None:
+    code = _code_by_id()
+    profile = code["portable-profiler"] + code["profile-models"]
+    export = code["export-results"]
+    assert "torch.cuda.synchronize" in profile
+    assert "torch.mps.synchronize" in profile
+    assert "measure_flops" in profile
+    assert "count_parameters" in profile
+    assert "comparison_results.csv" in export
+    assert "compute_results.csv" in export
+    assert "comparison_results.json" in export
+    assert '"schema_version": 1' in export
+
+
+def test_notebook_contains_tables_plots_takeaways_and_final_checks() -> None:
+    code = _code_by_id()
+    assert "quality_table" in code["build-result-tables"]
+    assert "compute_table" in code["build-result-tables"]
+    assert "plt.subplots" in code["plot-results"]
+    assert "percentage" in code["derive-takeaways"]
+    assert "math.isfinite" in code["final-checks"]

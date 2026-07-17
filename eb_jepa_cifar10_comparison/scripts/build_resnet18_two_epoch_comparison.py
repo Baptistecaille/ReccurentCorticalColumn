@@ -277,6 +277,363 @@ for label in ARM_LABELS:
 """
 
 
+PROFILING_MARKDOWN = """
+## Portable compute profiling
+
+Parameter counts and per-sample FLOPs are exact; latency and throughput are
+measured on the **active device** as a portable benchmark. Both arms are profiled
+with identical random image and feature tensors so head cost is isolated fairly.
+"""
+
+
+PORTABLE_PROFILER = """
+# Cross-device timing helpers. Synchronisation is a no-op on CPU and applies the
+# correct barrier on CUDA or Apple MPS before and after the timed region.
+def synchronize(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    elif device.type == "mps":
+        torch.mps.synchronize()
+
+
+def measure_portable_latency(call, batch_size: int) -> tuple[float, float]:
+    with torch.no_grad():
+        for _ in range(BENCHMARK_WARMUPS):
+            call()
+        synchronize(DEVICE)
+        start = perf_counter()
+        for _ in range(BENCHMARK_MEASUREMENTS):
+            call()
+        synchronize(DEVICE)
+    latency_ms = (perf_counter() - start) * 1_000.0 / BENCHMARK_MEASUREMENTS
+    return latency_ms, batch_size / (latency_ms / 1_000.0)
+
+
+def safe_flops_per_sample(module, example) -> tuple[float, str | None]:
+    try:
+        return measure_flops(module, example), None
+    except Exception as error:  # fvcore may not trace every op on every device
+        return math.nan, f"FLOP analysis unavailable: {type(error).__name__}: {error}"
+"""
+
+
+PROFILE_MODELS = """
+# Profile both arms on identical inputs. Weights come strictly from the best
+# checkpoint; parameters and FLOPs are exact, timing is device-local.
+FEATURE_DIM = int(configs["baseline"].model.feature_dim)
+torch.manual_seed(0)
+profile_images = torch.randn(BATCH_SIZE, 3, 32, 32, device=DEVICE)
+profile_features = torch.randn(BATCH_SIZE, FEATURE_DIM, device=DEVICE)
+
+profiles = {}
+compute_caveats = {}
+
+for label in ARM_LABELS:
+    cfg = configs[label]
+    model = build_model(cfg).to(DEVICE)
+    checkpoint = torch.load(
+        training_results[label].best_checkpoint,
+        map_location=DEVICE,
+        weights_only=False,
+    )
+    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    model.eval()
+
+    params = count_parameters(model)
+    head_flops, head_caveat = safe_flops_per_sample(model.head, profile_features)
+    full_flops, full_caveat = safe_flops_per_sample(model, profile_images)
+    head_latency, head_throughput = measure_portable_latency(
+        lambda m=model: m.head(profile_features), BATCH_SIZE
+    )
+    full_latency, full_throughput = measure_portable_latency(
+        lambda m=model: m(profile_images), BATCH_SIZE
+    )
+
+    profiles[label] = {
+        "params_backbone": params.backbone,
+        "params_head": params.head,
+        "params_total": params.total,
+        "head_flops_per_sample": head_flops,
+        "full_flops_per_sample": full_flops,
+        "head_latency_ms": head_latency,
+        "full_latency_ms": full_latency,
+        "head_throughput": head_throughput,
+        "full_throughput": full_throughput,
+    }
+    caveats = [note for note in (head_caveat, full_caveat) if note]
+    if caveats:
+        compute_caveats[label] = caveats
+    print(
+        f"{label}: head params {params.head:,} | "
+        f"full latency {full_latency:.2f} ms"
+    )
+"""
+
+
+RESULTS_MARKDOWN = """
+## Results, differences, and plots
+
+Quality and compute tables carry units in their column names. The comparison
+table reports predictor-versus-baseline absolute and percentage changes with a
+zero-denominator guard.
+"""
+
+
+BUILD_RESULT_TABLES = """
+# Assemble the reader-facing tables from training, evaluation, and profile data.
+def component_means(label: str) -> dict[str, float]:
+    pairs = evaluations[label].pairs
+    return {
+        "invariance": sum(p.invariance for p in pairs) / len(pairs),
+        "variance": sum(p.variance for p in pairs) / len(pairs),
+        "covariance": sum(p.covariance for p in pairs) / len(pairs),
+    }
+
+
+means_by_arm = {label: component_means(label) for label in ARM_LABELS}
+
+quality_table = pd.DataFrame(
+    [
+        {
+            "arm": label,
+            "head_type": str(configs[label].model.head_type),
+            "train_time (s)": training_seconds[label],
+            "best_val_loss": training_results[label].best_validation,
+            "test_total_mean": evaluations[label].mean_total,
+            "test_total_std": evaluations[label].std_total,
+            "test_invariance_mean": means_by_arm[label]["invariance"],
+            "test_variance_mean": means_by_arm[label]["variance"],
+            "test_covariance_mean": means_by_arm[label]["covariance"],
+        }
+        for label in ARM_LABELS
+    ]
+)
+
+compute_rows = []
+for label in ARM_LABELS:
+    profile = profiles[label]
+    for component, params_key, flops_key, latency_key, throughput_key in (
+        ("head", "params_head", "head_flops_per_sample", "head_latency_ms", "head_throughput"),
+        ("full", "params_total", "full_flops_per_sample", "full_latency_ms", "full_throughput"),
+    ):
+        compute_rows.append(
+            {
+                "arm": label,
+                "component": component,
+                "parameters": profile[params_key],
+                "flops_per_sample": profile[flops_key],
+                "latency (ms)": profile[latency_key],
+                "throughput (samples/s)": profile[throughput_key],
+            }
+        )
+compute_table = pd.DataFrame(compute_rows)
+
+
+def percentage_change(new: float, old: float) -> float:
+    if old == 0 or not math.isfinite(old) or not math.isfinite(new):
+        return math.nan
+    return (new - old) / abs(old) * 100.0
+
+
+COMPARISON_METRICS = {
+    "test_total_mean": (evaluations["baseline"].mean_total, evaluations["predictor"].mean_total),
+    "train_time_s": (training_seconds["baseline"], training_seconds["predictor"]),
+    "head_parameters": (profiles["baseline"]["params_head"], profiles["predictor"]["params_head"]),
+    "full_flops_per_sample": (profiles["baseline"]["full_flops_per_sample"], profiles["predictor"]["full_flops_per_sample"]),
+    "full_latency_ms": (profiles["baseline"]["full_latency_ms"], profiles["predictor"]["full_latency_ms"]),
+}
+comparison_table = pd.DataFrame(
+    [
+        {
+            "metric": metric,
+            "baseline": base,
+            "predictor": pred,
+            "absolute_change": pred - base,
+            "percentage_change": percentage_change(pred, base),
+        }
+        for metric, (base, pred) in COMPARISON_METRICS.items()
+    ]
+)
+
+display(quality_table)
+display(compute_table)
+comparison_table
+"""
+
+
+PLOT_RESULTS = """
+# Visualise VICReg components per arm and predictor/baseline compute ratios.
+fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+components = ["invariance", "variance", "covariance"]
+bar_width = 0.35
+positions = range(len(components))
+for offset, label in enumerate(ARM_LABELS):
+    values = [means_by_arm[label][component] for component in components]
+    axes[0].bar(
+        [p + offset * bar_width for p in positions],
+        values,
+        width=bar_width,
+        label=label,
+    )
+axes[0].set_xticks([p + bar_width / 2 for p in positions])
+axes[0].set_xticklabels(components)
+axes[0].set_ylabel("mean component value")
+axes[0].set_title("VICReg components (test)")
+axes[0].legend()
+
+ratio_metrics = ["head_parameters", "full_flops_per_sample", "full_latency_ms"]
+ratios = []
+for metric in ratio_metrics:
+    base, pred = COMPARISON_METRICS[metric]
+    ratios.append(pred / base if base not in (0, None) and math.isfinite(base) else math.nan)
+axes[1].bar(ratio_metrics, ratios, color="#4c72b0")
+axes[1].axhline(1.0, color="grey", linestyle="--", linewidth=1)
+axes[1].set_ylabel("predictor / baseline")
+axes[1].set_title("Normalised compute ratios")
+axes[1].tick_params(axis="x", rotation=20)
+
+plt.tight_layout()
+plt.show()
+"""
+
+
+DERIVE_TAKEAWAYS = """
+# Plain-language takeaways derived from the observed values. Each statement is a
+# percentage change relative to the baseline; positive means the predictor is
+# larger or slower on that metric.
+lines = []
+for row in comparison_table.itertuples(index=False):
+    percentage = row.percentage_change
+    if math.isfinite(percentage):
+        lines.append(
+            f"- {row.metric}: baseline {row.baseline:.4g} -> predictor "
+            f"{row.predictor:.4g} ({percentage:+.1f}% percentage change)"
+        )
+    else:
+        lines.append(
+            f"- {row.metric}: baseline {row.baseline:.4g} -> predictor "
+            f"{row.predictor:.4g} (percentage change undefined)"
+        )
+
+if compute_caveats:
+    lines.append(f"- FLOP caveats: {compute_caveats}")
+
+lines.append(
+    "- Interpretation limit: two epochs is a fast portable comparison and does "
+    "NOT imply either arm has converged."
+)
+print("\\n".join(lines))
+"""
+
+
+EXPORT_MARKDOWN = """
+## Export artifacts
+
+Flat CSV tables plus a schema-version-1 JSON artifact capturing the environment,
+resolved configurations, checkpoint hashes, raw evaluations, compute metrics,
+caveats, and derived differences.
+"""
+
+
+EXPORT_RESULTS = """
+# Persist portable, self-describing result artifacts under runs/.../reports.
+REPORTS_DIR = OUTPUT_ROOT / "reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def sha256_of(path) -> str:
+    digest = hashlib.sha256()
+    digest.update(Path(path).read_bytes())
+    return digest.hexdigest()
+
+
+quality_table.to_csv(REPORTS_DIR / "comparison_results.csv", index=False)
+compute_table.to_csv(REPORTS_DIR / "compute_results.csv", index=False)
+
+artifact = {
+    "schema_version": 1,
+    "environment": {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "torch": torch.__version__,
+        "device": str(DEVICE),
+        "in_colab": IN_COLAB,
+    },
+    "protocol": {
+        "epochs": EPOCHS,
+        "training_seed": TRAINING_SEED,
+        "pair_seeds": list(PAIR_SEEDS),
+        "batch_size": BATCH_SIZE,
+        "benchmark_warmups": BENCHMARK_WARMUPS,
+        "benchmark_measurements": BENCHMARK_MEASUREMENTS,
+        "timing_dtype": str(profile_images.dtype),
+    },
+    "configurations": {
+        label: OmegaConf.to_container(cfg, resolve=True)
+        for label, cfg in configs.items()
+    },
+    "checkpoints": {
+        label: {
+            "path": str(training_results[label].best_checkpoint),
+            "sha256": sha256_of(training_results[label].best_checkpoint),
+            "best_epoch": training_results[label].best_epoch,
+            "final_epoch": training_results[label].final_epoch,
+            "best_validation": training_results[label].best_validation,
+        }
+        for label in ARM_LABELS
+    },
+    "training_seconds": training_seconds,
+    "evaluations": {
+        label: {
+            "mean_total": evaluations[label].mean_total,
+            "std_total": evaluations[label].std_total,
+            "checkpoint_sha256": evaluations[label].checkpoint_sha256,
+            "pairs": [asdict(pair) for pair in evaluations[label].pairs],
+        }
+        for label in ARM_LABELS
+    },
+    "compute": profiles,
+    "compute_caveats": compute_caveats,
+    "differences": comparison_table.to_dict(orient="records"),
+}
+
+report_json_path = REPORTS_DIR / "comparison_results.json"
+report_json_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+print(f"Wrote {REPORTS_DIR / 'comparison_results.csv'}")
+print(f"Wrote {REPORTS_DIR / 'compute_results.csv'}")
+print(f"Wrote {report_json_path}")
+"""
+
+
+FINAL_CHECKS = """
+# Final invariants over the produced artifacts.
+for label in ARM_LABELS:
+    result = training_results[label]
+    assert result.best_checkpoint.is_file(), label
+    assert result.final_epoch == 1, (label, result.final_epoch)
+    pair_seeds = {pair.pair_seed for pair in evaluations[label].pairs}
+    assert pair_seeds == set(PAIR_SEEDS) and len(pair_seeds) == 5, label
+    assert math.isfinite(evaluations[label].mean_total), label
+    profile = profiles[label]
+    for key in (
+        "params_backbone",
+        "params_head",
+        "params_total",
+        "head_latency_ms",
+        "full_latency_ms",
+        "head_throughput",
+        "full_throughput",
+    ):
+        assert math.isfinite(profile[key]), (label, key)
+
+for name in ("comparison_results.csv", "compute_results.csv", "comparison_results.json"):
+    assert (REPORTS_DIR / name).is_file(), name
+
+print("All final checks passed.")
+"""
+
+
 def build_notebook() -> nbformat.NotebookNode:
     cells = [
         markdown("goal", GOAL_MARKDOWN),
@@ -288,6 +645,16 @@ def build_notebook() -> nbformat.NotebookNode:
         code("protocol-checks", PROTOCOL_CHECKS),
         code("train-models", TRAIN_MODELS),
         code("evaluate-checkpoints", EVALUATE_CHECKPOINTS),
+        markdown("profiling-heading", PROFILING_MARKDOWN),
+        code("portable-profiler", PORTABLE_PROFILER),
+        code("profile-models", PROFILE_MODELS),
+        markdown("results-heading", RESULTS_MARKDOWN),
+        code("build-result-tables", BUILD_RESULT_TABLES),
+        code("plot-results", PLOT_RESULTS),
+        code("derive-takeaways", DERIVE_TAKEAWAYS),
+        markdown("export-heading", EXPORT_MARKDOWN),
+        code("export-results", EXPORT_RESULTS),
+        code("final-checks", FINAL_CHECKS),
     ]
     return new_notebook(
         cells=cells,
