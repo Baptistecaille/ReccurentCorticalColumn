@@ -18,6 +18,8 @@ dependencies = [
 notebook = [
     "jupyterlab",
     "ipykernel",
+    "matplotlib>=3.9",
+    "pandas>=2.2",
 ]
 
 [build-system]
