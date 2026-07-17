@@ -99,25 +99,43 @@ def restore_rng_state(state: dict[str, object]) -> None:
         )
 
 
+def _mps_is_available() -> bool:
+    return bool(
+        hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+    )
+
+
 def setup_device(device_name: str = "auto") -> torch.device:
-    """Select CPU or CUDA without silently hiding unavailable CUDA."""
+    """Select CUDA, MPS, or CPU and reject unavailable explicit devices."""
 
     normalized_name = device_name.lower()
 
     if normalized_name == "auto":
-        normalized_name = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            normalized_name = "cuda"
+        elif _mps_is_available():
+            normalized_name = "mps"
+        else:
+            normalized_name = "cpu"
 
     try:
         device = torch.device(normalized_name)
     except (RuntimeError, ValueError) as error:
         raise ValueError(
             f"Unknown device {device_name!r}; expected 'auto', 'cpu', "
-            "'cuda' or 'cuda:<index>'"
+            "'mps', 'cuda' or 'cuda:<index>'"
         ) from error
 
-    if device.type not in {"cpu", "cuda"}:
+    if device.type not in {"cpu", "mps", "cuda"}:
         raise ValueError(
-            f"Unsupported device type {device.type!r}; expected CPU or CUDA"
+            f"Unsupported device type {device.type!r}; "
+            "expected CPU, MPS or CUDA"
+        )
+
+    if device.type == "mps" and not _mps_is_available():
+        raise RuntimeError(
+            "MPS was explicitly requested, but no MPS device is available"
         )
 
     if device.type == "cuda":
@@ -136,6 +154,19 @@ def setup_device(device_name: str = "auto") -> torch.device:
                 )
 
     return device
+
+
+def should_use_bfloat16(
+    precision: object,
+    device: torch.device,
+) -> bool:
+    """Return whether configured bfloat16 autocast is safe on the device."""
+    return str(precision).lower() == "bfloat16" and device.type != "mps"
+
+
+def should_pin_memory(requested: object, device: torch.device) -> bool:
+    """Honor pin_memory except on MPS, where PyTorch cannot use it."""
+    return bool(requested) and device.type != "mps"
 
 
 def setup_seed(seed: int) -> None:
