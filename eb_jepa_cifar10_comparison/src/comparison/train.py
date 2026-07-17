@@ -174,7 +174,7 @@ def run(cfg: DictConfig, seed: int, output_dir: str | Path, resume_from: str | P
     # ------------------------------------------------------------------
     # 2. Configurer l’environnement reproductible
     # ------------------------------------------------------------------
-    device = setup_device() # GPU -> CPU 
+    device = setup_device() # CUDA -> MPS -> CPU
 
     setup_seed(seed) # set seed for reproducibility based on the device 
 
