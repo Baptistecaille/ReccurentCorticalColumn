@@ -1,32 +1,26 @@
 from torch import Tensor, nn
 
-from .backbone import ResNet18
+from .backbone import build_backbone
 from .heads import build_head
 from omegaconf import DictConfig
 from dataclasses import dataclass
 
 
 class ImageSSL(nn.Module):
-    def __init__(self, backbone: ResNet18, head: nn.Module) -> None:
+    def __init__(self, backbone: nn.Module, head: nn.Module) -> None:
         super().__init__()
         self.backbone = backbone
         self.head = head
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
-        # 1. Calcule les features.
-        # 2. Calcule les projections depuis ces mêmes features.
         features = self.backbone(images)
         projections = self.head(features)
         return features, projections
-    
+
+
 def build_model(cfg: DictConfig) -> ImageSSL:
-    
-    # Backbone
-    backbone = ResNet18()
-
-    # Head
+    backbone = build_backbone(cfg.model.backbone)
     head = build_head(cfg)
-
     return ImageSSL(backbone=backbone, head=head)
 
 @dataclass(frozen=True)

@@ -42,3 +42,15 @@ class MLPEncoder(nn.Module):
 
     def forward(self, images: Tensor) -> Tensor:
         return self.layers(images)
+
+
+def build_backbone(name: object) -> nn.Module:
+    """Build a fresh encoder selected by its configuration name."""
+    normalized_name = str(name).lower()
+    if normalized_name == "mlp":
+        return MLPEncoder()
+    if normalized_name == "resnet18":
+        return ResNet18()
+    raise ValueError(
+        f"model.backbone must be 'mlp' or 'resnet18', received {name!r}"
+    )

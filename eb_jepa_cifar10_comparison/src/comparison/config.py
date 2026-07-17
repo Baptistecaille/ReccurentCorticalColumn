@@ -137,9 +137,11 @@ def validate_config(cfg: DictConfig) -> None:
         "model.head_type must be 'baseline' or 'cortical', "
         f"received {cfg.model.head_type!r}",
     )
+    backbone = str(cfg.model.backbone).lower()
     _require(
-        str(cfg.model.backbone).lower() == "resnet18",
-        f"model.backbone must be 'resnet18', received {cfg.model.backbone!r}",
+        backbone in {"mlp", "resnet18"},
+        "model.backbone must be 'mlp' or 'resnet18', "
+        f"received {cfg.model.backbone!r}",
     )
     _require(
         int(cfg.model.feature_dim) == 512,
