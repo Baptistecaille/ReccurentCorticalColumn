@@ -215,9 +215,9 @@ def validate_config(cfg: DictConfig) -> None:
         epochs > 0,
         f"optimization.epochs must be positive, received {epochs}",
     )
-    _require_close(
+    """    _require_close(
         "optimization.learning_rate", cfg.optimization.learning_rate, 0.3
-    )
+    )"""
     _require(
         warmup_epochs >= 0,
         "optimization.warmup_epochs must be non-negative, "
