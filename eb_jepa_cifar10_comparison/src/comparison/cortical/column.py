@@ -33,6 +33,7 @@ class ColumnStep(nn.Module):
     def __init__(self, dim: int, hidden_mult: int = 2) -> None:
         super().__init__()
         hidden_dim = dim * hidden_mult
+        self.norm = nn.LayerNorm(dim)
         self.mlp = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
@@ -40,7 +41,7 @@ class ColumnStep(nn.Module):
         )
 
     def forward(self, hidden: torch.Tensor) -> torch.Tensor:
-        return hidden + self.mlp(hidden)
+        return hidden + self.mlp(self.norm(hidden))
 
 
 class CorticalColumn(nn.Module):
