@@ -106,3 +106,15 @@ def test_notebook_compares_every_arm_against_the_baseline() -> None:
     assert '"predictor_matched": "cortical"' in checks
     assert "for label in ARM_LABELS" in checks
     assert 'if label == "baseline"' in checks
+
+
+def test_notebook_checks_parameter_parity_before_training() -> None:
+    notebook = _load_notebook()
+    ids = [cell["id"] for cell in notebook["cells"]]
+    assert ids.index("parameter-parity") < ids.index("train-models")
+
+    parity = _code_by_id()["parameter-parity"]
+    assert "PARITY_TOLERANCE = 0.01" in parity
+    assert "count_parameters" in parity
+    assert "build_model" in parity
+    assert "assert relative_gap <= PARITY_TOLERANCE" in parity

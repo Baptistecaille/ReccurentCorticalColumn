@@ -238,6 +238,48 @@ protocol_table
 """
 
 
+PARAMETER_PARITY = """
+# Fail fast: verify head-parameter parity BEFORE spending GPU time on training.
+# Building the models is instantaneous and trains nothing.
+PARITY_TOLERANCE = 0.01  # 1%
+
+head_parameters = {}
+backbone_parameters = {}
+for label in ARM_LABELS:
+    counts = count_parameters(build_model(configs[label]))
+    head_parameters[label] = counts.head
+    backbone_parameters[label] = counts.backbone
+
+# All arms share the identical ResNet-18 backbone.
+assert len(set(backbone_parameters.values())) == 1, backbone_parameters
+
+relative_gap = (
+    abs(head_parameters["predictor_matched"] - head_parameters["baseline"])
+    / head_parameters["baseline"]
+)
+assert relative_gap <= PARITY_TOLERANCE, (head_parameters, relative_gap)
+
+parity_table = pd.DataFrame(
+    [
+        {
+            "arm": label,
+            "head_parameters": head_parameters[label],
+            "backbone_parameters": backbone_parameters[label],
+            "total_parameters": head_parameters[label] + backbone_parameters[label],
+            "head_vs_baseline_%": (
+                (head_parameters[label] - head_parameters["baseline"])
+                / head_parameters["baseline"]
+                * 100.0
+            ),
+        }
+        for label in ARM_LABELS
+    ]
+)
+print(f"Matched-arm gap vs baseline: {relative_gap * 100:.3f}%")
+parity_table
+"""
+
+
 TRAIN_MODELS = """
 # Sequential training: each arm trains from the same seed into its own output
 # directory. Active-device wall-clock time is recorded as a portable benchmark.
@@ -653,6 +695,7 @@ def build_notebook() -> nbformat.NotebookNode:
         markdown("configurations-heading", CONFIG_MARKDOWN),
         code("build-configurations", BUILD_CONFIGURATIONS),
         code("protocol-checks", PROTOCOL_CHECKS),
+        code("parameter-parity", PARAMETER_PARITY),
         code("train-models", TRAIN_MODELS),
         code("evaluate-checkpoints", EVALUATE_CHECKPOINTS),
         markdown("profiling-heading", PROFILING_MARKDOWN),
