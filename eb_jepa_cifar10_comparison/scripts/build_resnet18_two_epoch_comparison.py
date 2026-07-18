@@ -29,12 +29,13 @@ def code(cell_id: str, source: str):
 GOAL_MARKDOWN = """
 # ResNet-18 Two-Epoch Comparison
 
-Train and fully compare the **EB-JEPA MLP projector** (`baseline` head) and the
-**`FixedTreePredictor`** (`cortical` head) with an **identical ResNet-18 backbone**
-over exactly **two CIFAR-10 epochs**.
+Train and fully compare the **EB-JEPA MLP projector** (`baseline` head), the
+**`FixedTreePredictor`** (`predictor` head), and a parameter-matched, enlarged
+`FixedTreePredictor` (`predictor_matched` head) with an **identical ResNet-18
+backbone** over exactly **two CIFAR-10 epochs**.
 
-Both arms share the same training seed, batch size, VICReg loss, optimizer, and
-protocol overrides; only the projection head differs. The notebook runs locally
+All three arms share the same training seed, batch size, VICReg loss, optimizer,
+and protocol overrides; only the projection head differs. The notebook runs locally
 (CUDA / Apple MPS / CPU) and on Google Colab without any hard-coded paths.
 
 > **Interpretation limit:** two epochs is a fast, portable comparison, not a
@@ -148,7 +149,7 @@ print(f"Output root: {OUTPUT_ROOT}")
 CONFIG_MARKDOWN = """
 ## Fair configurations
 
-Both arms load their published config and apply **one shared override list** so
+Each arm loads its published config and applies **one shared override list** so
 the only difference is the projection head. The ResNet-18 backbone, two epochs,
 zero warm-up, batch size, and VICReg loss are identical.
 """
@@ -156,7 +157,7 @@ zero warm-up, batch size, and VICReg loss are identical.
 
 BUILD_CONFIGURATIONS = """
 # One shared override list guarantees a fair comparison: identical backbone,
-# schedule, data, and loss for both arms. ``load_config`` validates every value.
+# schedule, data, and loss for all three arms. ``load_config`` validates every value.
 SHARED_OVERRIDES = [
     f"data.root={DATA_ROOT}",
     f"data.batch_size={BATCH_SIZE}",
@@ -182,8 +183,8 @@ for label, cfg in configs.items():
 
 
 PROTOCOL_CHECKS = """
-# Guardrails: confirm both resolved configs share the ResNet-18 backbone and the
-# fixed two-epoch, zero-warm-up protocol, and differ only by the head type.
+# Guardrails: confirm all three resolved configs share the ResNet-18 backbone and
+# the fixed two-epoch, zero-warm-up protocol, and differ only by the head type.
 EXPECTED_HEADS = {
     "baseline": "baseline",
     "predictor": "cortical",
@@ -306,7 +307,7 @@ for label in ARM_LABELS:
 
 EVALUATE_CHECKPOINTS = """
 # Strict evaluation of each best checkpoint on the same five deterministic view
-# pairs, so the two arms are scored on identical inputs.
+# pairs, so all three arms are scored on identical inputs.
 evaluations = {}
 
 for label in ARM_LABELS:
@@ -333,8 +334,9 @@ PROFILING_MARKDOWN = """
 ## Portable compute profiling
 
 Parameter counts and per-sample FLOPs are exact; latency and throughput are
-measured on the **active device** as a portable benchmark. Both arms are profiled
-with identical random image and feature tensors so head cost is isolated fairly.
+measured on the **active device** as a portable benchmark. All three arms are
+profiled with identical random image and feature tensors so head cost is
+isolated fairly.
 """
 
 
@@ -370,7 +372,7 @@ def safe_flops_per_sample(module, example) -> tuple[float, str | None]:
 
 
 PROFILE_MODELS = """
-# Profile both arms on identical inputs. Weights come strictly from the best
+# Profile all three arms on identical inputs. Weights come strictly from the best
 # checkpoint; parameters and FLOPs are exact, timing is device-local.
 FEATURE_DIM = int(configs["baseline"].model.feature_dim)
 torch.manual_seed(0)
@@ -426,7 +428,7 @@ RESULTS_MARKDOWN = """
 ## Results, differences, and plots
 
 Quality and compute tables carry units in their column names. The comparison
-table reports predictor-versus-baseline absolute and percentage changes with a
+table reports each arm-versus-baseline absolute and percentage changes with a
 zero-denominator guard.
 """
 
@@ -577,8 +579,8 @@ plt.show()
 
 DERIVE_TAKEAWAYS = """
 # Plain-language takeaways derived from the observed values. Each statement is a
-# percentage change relative to the baseline; positive means the predictor is
-# larger or slower on that metric.
+# percentage change relative to the baseline; positive means that arm is larger
+# or slower than the baseline on that metric.
 lines = []
 for row in comparison_table.itertuples(index=False):
     percentage = row.percentage_change
@@ -607,7 +609,7 @@ print("\\n".join(lines))
 EXPORT_MARKDOWN = """
 ## Export artifacts
 
-Flat CSV tables plus a schema-version-1 JSON artifact capturing the environment,
+Flat CSV tables plus a schema-version-2 JSON artifact capturing the environment,
 resolved configurations, checkpoint hashes, raw evaluations, compute metrics,
 caveats, and derived differences.
 """
@@ -629,7 +631,7 @@ quality_table.to_csv(REPORTS_DIR / "comparison_results.csv", index=False)
 compute_table.to_csv(REPORTS_DIR / "compute_results.csv", index=False)
 
 artifact = {
-    "schema_version": 1,
+    "schema_version": 2,
     "environment": {
         "python": platform.python_version(),
         "platform": platform.platform(),

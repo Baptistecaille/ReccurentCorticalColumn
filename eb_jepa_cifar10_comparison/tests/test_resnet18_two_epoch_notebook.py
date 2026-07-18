@@ -70,7 +70,7 @@ def test_notebook_profiles_active_device_and_exports_results() -> None:
     assert "comparison_results.csv" in export
     assert "compute_results.csv" in export
     assert "comparison_results.json" in export
-    assert '"schema_version": 1' in export
+    assert '"schema_version": 2' in export
 
 
 def test_notebook_contains_tables_plots_takeaways_and_final_checks() -> None:

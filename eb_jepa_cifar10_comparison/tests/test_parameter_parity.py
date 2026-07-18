@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from omegaconf import OmegaConf
+
 from comparison.config import load_config
 from comparison.model import build_model, count_parameters
 
@@ -10,6 +12,7 @@ CONFIG_DIR = PROJECT_DIR / "configs"
 # baseline.yaml carries working-tree edits that fail validate_config without
 # these; head parameter counts are unaffected by optimization values.
 PROTOCOL_OVERRIDES = [
+    "model.backbone=resnet18",
     "optimization.learning_rate=0.3",
     "optimization.warmup_start_lr=0.00003",
 ]
@@ -36,5 +39,9 @@ def test_matched_config_changes_only_two_cortical_dimensions() -> None:
     assert int(matched.cortical.dim_feedback) == 168
     assert str(matched.model.head_type).lower() == "cortical"
 
-    for key in ("n", "L_max", "dim_in", "dim_hidden", "dim_target"):
-        assert original.cortical[key] == matched.cortical[key], key
+    original_dict = OmegaConf.to_container(original, resolve=True)
+    matched_dict = OmegaConf.to_container(matched, resolve=True)
+    for cfg in (original_dict, matched_dict):
+        cfg["cortical"]["dim_U"] = None
+        cfg["cortical"]["dim_feedback"] = None
+    assert original_dict == matched_dict

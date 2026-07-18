@@ -86,7 +86,7 @@ une A100 conforme au protocole.
 Le notebook `scripts/resnet18_two_epoch_comparison.ipynb` entraîne et compare de
 bout en bout le projecteur MLP (`baseline`) et `FixedTreePredictor` (`cortical`)
 avec un **backbone ResNet-18 identique** sur exactement **deux epochs** CIFAR-10.
-Les deux bras partagent graine, batch, perte VICReg et overrides ; seule la tête
+Les trois bras partagent graine, batch, perte VICReg et overrides ; seule la tête
 diffère. La chronométrie se fait sur le périphérique actif (CUDA → MPS → CPU)
 comme benchmark portable, et non selon le protocole A100 strict.
 
