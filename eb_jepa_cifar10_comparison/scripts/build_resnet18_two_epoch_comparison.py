@@ -128,7 +128,7 @@ PAIR_SEEDS = (11, 22, 33, 44, 55)
 BATCH_SIZE = 256
 NUM_WORKERS = 2
 
-ARM_LABELS = ("baseline", "predictor")
+ARM_LABELS = ("baseline", "predictor", "predictor_matched")
 
 # Notebook-local data and output roots kept apart from the strict A100 workflow.
 DATA_ROOT = PROJECT_ROOT / "data"
@@ -170,6 +170,7 @@ SHARED_OVERRIDES = [
 CONFIG_PATHS = {
     "baseline": PROJECT_ROOT / "configs" / "baseline.yaml",
     "predictor": PROJECT_ROOT / "configs" / "cortical.yaml",
+    "predictor_matched": PROJECT_ROOT / "configs" / "cortical_matched.yaml",
 }
 configs = {
     label: load_config(path, SHARED_OVERRIDES)
@@ -183,18 +184,13 @@ for label, cfg in configs.items():
 PROTOCOL_CHECKS = """
 # Guardrails: confirm both resolved configs share the ResNet-18 backbone and the
 # fixed two-epoch, zero-warm-up protocol, and differ only by the head type.
-EXPECTED_HEADS = {"baseline": "baseline", "predictor": "cortical"}
+EXPECTED_HEADS = {
+    "baseline": "baseline",
+    "predictor": "cortical",
+    "predictor_matched": "cortical",
+}
 
-for label, cfg in configs.items():
-    assert str(cfg.model.backbone).lower() == "resnet18", label
-    assert int(cfg.optimization.epochs) == EPOCHS, label
-    assert int(cfg.optimization.warmup_epochs) == 0, label
-    assert int(cfg.data.batch_size) == BATCH_SIZE, label
-    assert str(cfg.model.head_type).lower() == EXPECTED_HEADS[label], label
-
-# The two arms must agree on every shared data/loss/optimization value.
-baseline_cfg, predictor_cfg = configs["baseline"], configs["predictor"]
-for path in (
+SHARED_PROTOCOL_PATHS = (
     "data.batch_size",
     "data.crop_scale",
     "loss.cov_coeff",
@@ -205,10 +201,24 @@ for path in (
     "optimization.learning_rate",
     "optimization.warmup_start_lr",
     "optimization.weight_decay",
-):
-    left = OmegaConf.select(baseline_cfg, path)
-    right = OmegaConf.select(predictor_cfg, path)
-    assert left == right, f"Mismatch on {path}: {left} != {right}"
+)
+
+for label in ARM_LABELS:
+    cfg = configs[label]
+    assert str(cfg.model.backbone).lower() == "resnet18", label
+    assert int(cfg.optimization.epochs) == EPOCHS, label
+    assert int(cfg.optimization.warmup_epochs) == 0, label
+    assert int(cfg.data.batch_size) == BATCH_SIZE, label
+    assert str(cfg.model.head_type).lower() == EXPECTED_HEADS[label], label
+
+    # Every arm must agree with the baseline on the shared protocol values.
+    # Intentional differences live under cortical.*, which is not compared here.
+    if label == "baseline":
+        continue
+    for path in SHARED_PROTOCOL_PATHS:
+        left = OmegaConf.select(configs["baseline"], path)
+        right = OmegaConf.select(cfg, path)
+        assert left == right, f"{label} mismatch on {path}: {left} != {right}"
 
 protocol_table = pd.DataFrame(
     [

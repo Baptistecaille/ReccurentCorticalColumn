@@ -88,3 +88,21 @@ def test_readme_documents_local_and_colab_execution() -> None:
     assert "uv run jupyter lab" in readme
     assert "Google Colab" in readme
     assert "two epochs" in readme.lower()
+
+
+def test_notebook_declares_three_arms_including_matched_predictor() -> None:
+    code = _code_by_id()
+    parameters = code["experiment-parameters"]
+    config_source = code["build-configurations"]
+    assert 'ARM_LABELS = ("baseline", "predictor", "predictor_matched")' in parameters
+    assert (
+        '"predictor_matched": PROJECT_ROOT / "configs" / "cortical_matched.yaml"'
+        in config_source
+    )
+
+
+def test_notebook_compares_every_arm_against_the_baseline() -> None:
+    checks = _code_by_id()["protocol-checks"]
+    assert '"predictor_matched": "cortical"' in checks
+    assert "for label in ARM_LABELS" in checks
+    assert 'if label == "baseline"' in checks
