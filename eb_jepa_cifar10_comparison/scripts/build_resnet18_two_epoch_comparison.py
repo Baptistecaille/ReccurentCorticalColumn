@@ -537,7 +537,7 @@ for offset, label in enumerate(ARM_LABELS):
         width=bar_width,
         label=label,
     )
-axes[0].set_xticks([p + bar_width / 2 for p in positions])
+axes[0].set_xticks([p + bar_width * (len(ARM_LABELS) - 1) / 2 for p in positions])
 axes[0].set_xticklabels(components)
 axes[0].set_ylabel("mean component value")
 axes[0].set_title("VICReg components (test)")
