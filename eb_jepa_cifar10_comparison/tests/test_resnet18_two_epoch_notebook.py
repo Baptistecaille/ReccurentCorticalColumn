@@ -118,3 +118,19 @@ def test_notebook_checks_parameter_parity_before_training() -> None:
     assert "count_parameters" in parity
     assert "build_model" in parity
     assert "assert relative_gap <= PARITY_TOLERANCE" in parity
+
+
+def test_comparison_table_is_row_oriented_per_arm() -> None:
+    code = _code_by_id()
+    tables = code["build-result-tables"]
+    assert "def arm_metric_values(label: str)" in tables
+    assert "COMPARISON_ARMS" in tables
+    assert '"arm": label' in tables
+    assert '"arm_value": value' in tables
+    assert "COMPARISON_METRICS" not in tables
+
+
+def test_plots_and_takeaways_consume_the_arm_column() -> None:
+    code = _code_by_id()
+    assert "COMPARISON_ARMS" in code["plot-results"]
+    assert "row.arm" in code["derive-takeaways"]

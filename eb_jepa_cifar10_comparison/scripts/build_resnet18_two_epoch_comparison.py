@@ -487,23 +487,32 @@ def percentage_change(new: float, old: float) -> float:
     return (new - old) / abs(old) * 100.0
 
 
-COMPARISON_METRICS = {
-    "test_total_mean": (evaluations["baseline"].mean_total, evaluations["predictor"].mean_total),
-    "train_time_s": (training_seconds["baseline"], training_seconds["predictor"]),
-    "head_parameters": (profiles["baseline"]["params_head"], profiles["predictor"]["params_head"]),
-    "full_flops_per_sample": (profiles["baseline"]["full_flops_per_sample"], profiles["predictor"]["full_flops_per_sample"]),
-    "full_latency_ms": (profiles["baseline"]["full_latency_ms"], profiles["predictor"]["full_latency_ms"]),
-}
+COMPARISON_ARMS = tuple(label for label in ARM_LABELS if label != "baseline")
+
+
+def arm_metric_values(label: str) -> dict[str, float]:
+    return {
+        "test_total_mean": evaluations[label].mean_total,
+        "train_time_s": training_seconds[label],
+        "head_parameters": profiles[label]["params_head"],
+        "full_flops_per_sample": profiles[label]["full_flops_per_sample"],
+        "full_latency_ms": profiles[label]["full_latency_ms"],
+    }
+
+
+BASELINE_METRICS = arm_metric_values("baseline")
 comparison_table = pd.DataFrame(
     [
         {
+            "arm": label,
             "metric": metric,
-            "baseline": base,
-            "predictor": pred,
-            "absolute_change": pred - base,
-            "percentage_change": percentage_change(pred, base),
+            "baseline": BASELINE_METRICS[metric],
+            "arm_value": value,
+            "absolute_change": value - BASELINE_METRICS[metric],
+            "percentage_change": percentage_change(value, BASELINE_METRICS[metric]),
         }
-        for metric, (base, pred) in COMPARISON_METRICS.items()
+        for label in COMPARISON_ARMS
+        for metric, value in arm_metric_values(label).items()
     ]
 )
 
@@ -518,7 +527,7 @@ PLOT_RESULTS = """
 fig, axes = plt.subplots(1, 2, figsize=(11, 4))
 
 components = ["invariance", "variance", "covariance"]
-bar_width = 0.35
+bar_width = 0.8 / len(ARM_LABELS)
 positions = range(len(components))
 for offset, label in enumerate(ARM_LABELS):
     values = [means_by_arm[label][component] for component in components]
@@ -535,14 +544,30 @@ axes[0].set_title("VICReg components (test)")
 axes[0].legend()
 
 ratio_metrics = ["head_parameters", "full_flops_per_sample", "full_latency_ms"]
-ratios = []
-for metric in ratio_metrics:
-    base, pred = COMPARISON_METRICS[metric]
-    ratios.append(pred / base if base not in (0, None) and math.isfinite(base) else math.nan)
-axes[1].bar(ratio_metrics, ratios, color="#4c72b0")
+ratio_width = 0.8 / len(COMPARISON_ARMS)
+ratio_positions = range(len(ratio_metrics))
+for offset, label in enumerate(COMPARISON_ARMS):
+    values = arm_metric_values(label)
+    ratios = [
+        values[metric] / BASELINE_METRICS[metric]
+        if BASELINE_METRICS[metric] and math.isfinite(BASELINE_METRICS[metric])
+        else math.nan
+        for metric in ratio_metrics
+    ]
+    axes[1].bar(
+        [p + offset * ratio_width for p in ratio_positions],
+        ratios,
+        width=ratio_width,
+        label=label,
+    )
+axes[1].set_xticks(
+    [p + ratio_width * (len(COMPARISON_ARMS) - 1) / 2 for p in ratio_positions]
+)
+axes[1].set_xticklabels(ratio_metrics)
 axes[1].axhline(1.0, color="grey", linestyle="--", linewidth=1)
-axes[1].set_ylabel("predictor / baseline")
+axes[1].set_ylabel("arm / baseline")
 axes[1].set_title("Normalised compute ratios")
+axes[1].legend()
 axes[1].tick_params(axis="x", rotation=20)
 
 plt.tight_layout()
@@ -559,13 +584,13 @@ for row in comparison_table.itertuples(index=False):
     percentage = row.percentage_change
     if math.isfinite(percentage):
         lines.append(
-            f"- {row.metric}: baseline {row.baseline:.4g} -> predictor "
-            f"{row.predictor:.4g} ({percentage:+.1f}% percentage change)"
+            f"- [{row.arm}] {row.metric}: baseline {row.baseline:.4g} -> "
+            f"{row.arm_value:.4g} ({percentage:+.1f}% percentage change)"
         )
     else:
         lines.append(
-            f"- {row.metric}: baseline {row.baseline:.4g} -> predictor "
-            f"{row.predictor:.4g} (percentage change undefined)"
+            f"- [{row.arm}] {row.metric}: baseline {row.baseline:.4g} -> "
+            f"{row.arm_value:.4g} (percentage change undefined)"
         )
 
 if compute_caveats:
