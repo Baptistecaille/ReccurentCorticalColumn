@@ -1,0 +1,69 @@
+# Parameter-matched variant of cortical.yaml.
+#
+# Differs from cortical.yaml on exactly two values so the FixedTreePredictor
+# head matches the baseline MLP projector's 9,451,520 parameters:
+#   cortical.dim_U:        256 -> 512   (primary capacity step)
+#   cortical.dim_feedback: 128 -> 168   (fine adjustment, ~4,600 params/unit)
+# Resulting head size: 9,447,920 parameters (0.038% below baseline).
+# The tree topology (n, L_max, dim_hidden) is unchanged; only its width grows.
+
+data:
+  dataset: cifar10
+  root: ./data
+  download: true
+  train_size: 45000
+  validation_size: 5000
+  test_size: 10000
+  batch_size: 256
+  num_workers: 4
+  pin_memory: true
+  split_seed: 42
+  crop_scale: [0.2, 1.0]
+
+model:
+  head_type: cortical
+  backbone: mlp
+  feature_dim: 512
+  mlp_hidden_dim: 2048
+  output_dim: 2048
+
+cortical:
+  n: 2
+  L_max: 2
+  dim_in: 512
+  dim_hidden: 256
+  dim_feedback: 168
+  dim_U: 512
+  dim_target: 2048
+  disable_lateral: false
+  disable_feedback: false
+
+loss:
+  type: vicreg
+  invariance_coeff: 1.0
+  std_coeff: 1.0
+  cov_coeff: 80.0
+  variance_target: 1.0
+  variance_epsilon: 0.0001
+  collapse_threshold: 0.1
+
+optimization:
+  optimizer: lars
+  epochs: 50
+  learning_rate: 0.3
+  warmup_epochs: 10
+  warmup_start_lr: 0.00003
+  min_lr: 0.0
+  weight_decay: 0.0001
+  momentum: 0.9
+  precision: bfloat16
+
+experiment:
+  seeds: [1, 1000, 10000]
+  checkpoint_every: 50
+
+benchmark:
+  required_gpu: NVIDIA A100
+  batch_size: 256
+  warmups: 100
+  measurements: 500
