@@ -96,6 +96,24 @@ comme benchmark portable, et non selon le protocole A100 strict.
 Le notebook source est généré depuis `scripts/build_resnet18_two_epoch_comparison.py`
 via `nbformat`, afin de rester reproductible et relisible en diff.
 
+### Les trois bras
+
+| Bras | Config | Tête | Paramètres tête |
+|---|---|---|---|
+| `baseline` | `configs/baseline.yaml` | Projecteur MLP EB-JEPA | 9 451 520 |
+| `predictor` | `configs/cortical.yaml` | `FixedTreePredictor` | 6 508 288 (−31,1 %) |
+| `predictor_matched` | `configs/cortical_matched.yaml` | `FixedTreePredictor` élargi | 9 447 920 (−0,038 %) |
+
+`cortical_matched.yaml` ne diffère de `cortical.yaml` que par `cortical.dim_U`
+(256 → 512) et `cortical.dim_feedback` (128 → 168) : la topologie de l'arbre est
+inchangée, seule sa largeur augmente. Comparer `predictor` et
+`predictor_matched` à la même baseline sépare l'effet de capacité de l'effet
+d'architecture.
+
+La cellule `parameter-parity` vérifie l'appariement à 1 % près **avant** tout
+entraînement : si une dimension est modifiée et casse l'appariement, le notebook
+échoue en quelques secondes plutôt qu'après trois entraînements.
+
 ### Exécution locale
 
 Depuis `eb_jepa_cifar10_comparison` :

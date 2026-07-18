@@ -134,3 +134,10 @@ def test_plots_and_takeaways_consume_the_arm_column() -> None:
     code = _code_by_id()
     assert "COMPARISON_ARMS" in code["plot-results"]
     assert "row.arm" in code["derive-takeaways"]
+
+
+def test_readme_documents_the_parameter_matched_arm() -> None:
+    readme = (PROJECT_DIR / "README.md").read_text(encoding="utf-8")
+    assert "cortical_matched.yaml" in readme
+    assert "predictor_matched" in readme
+    assert "9 447 920" in readme or "9,447,920" in readme
